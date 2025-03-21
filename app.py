@@ -49,6 +49,7 @@ def save_uploaded_file(uploaded_file):
 def login_page():
     """Display login page."""
     st.title("Welcome to LegalAI Assistant")
+    st.markdown("### Indian Legal Document Analysis Platform")
     
     col1, col2 = st.columns([1, 1])
     
@@ -304,7 +305,23 @@ def translator_page():
     st.divider()
     st.subheader("Common Legal Terms Glossary")
     
-    with st.expander("View Glossary"):
+    tab1, tab2 = st.tabs(["Indian Legal Terms", "General Legal Terms"])
+    
+    with tab1:
+        st.markdown("""
+        - **Writ petition**: A court petition for extraordinary review, seeking justice when fundamental rights are violated
+        - **Suo motu**: Action taken by a court on its own initiative without any party requesting it
+        - **Vakalatnama**: Document by which a litigant authorizes an advocate to represent them in court
+        - **Lok adalat**: People's court where disputes are settled through compromise and conciliation
+        - **FIR**: First Information Report, the document prepared by police when they receive information about a cognizable offense
+        - **IPC**: Indian Penal Code, the main criminal code of India
+        - **CPC**: Code of Civil Procedure, the procedural law related to civil proceedings in India
+        - **CrPC**: Code of Criminal Procedure, the main legislation on procedure for administration of criminal law in India
+        - **PIL**: Public Interest Litigation, court case filed to protect the public interest
+        - **Anticipatory bail**: Bail granted to a person who anticipates arrest for a non-bailable offense
+        """)
+        
+    with tab2:
         st.markdown("""
         - **Force majeure**: Unforeseeable circumstances that prevent fulfilling a contract
         - **Habeas corpus**: A legal action to determine if someone's detention is lawful
@@ -354,7 +371,9 @@ def main():
             """
             <div style='text-align: center; margin-top: 100px;'>
                 <h1>⚖️ LegalAI Assistant</h1>
-                <p>Your AI-powered legal document analyzer</p>
+                <p>Your AI-powered Indian legal document analyzer</p>
+                <h3>Simplifying Indian legal research and analysis</h3>
+                <p style='font-size: 0.9em;'>Specialized in IPC, CPC, CrPC and Indian case law</p>
             </div>
             """, 
             unsafe_allow_html=True

@@ -35,7 +35,7 @@ def find_precedents(text: str) -> List[Dict[str, Any]]:
 
 def extract_case_citations(text: str) -> List[Dict[str, Any]]:
     """
-    Extract case citations from text.
+    Extract case citations from text with focus on Indian law cases.
     
     Args:
         text (str): Text to extract citations from
@@ -43,22 +43,45 @@ def extract_case_citations(text: str) -> List[Dict[str, Any]]:
     Returns:
         List[Dict[str, Any]]: List of extracted case citations
     """
-    # Common case citation patterns
-    citation_patterns = [
+    # Common case citation patterns - general
+    general_citation_patterns = [
         # Pattern for "X v. Y" or "X vs. Y"
         r'\b([A-Z][a-zA-Z\'\s,\.]+)\s+v\.?\s+([A-Z][a-zA-Z\'\s,\.]+)(?:\s+\((\d{4})\))?',
         # Pattern for "X versus Y"
         r'\b([A-Z][a-zA-Z\'\s,\.]+)\s+versus\s+([A-Z][a-zA-Z\'\s,\.]+)(?:\s+\((\d{4})\))?',
-        # Pattern for court reporter citations
-        r'\b\d+\s+[A-Z]\.(?:\s?\d+[a-z]{0,2}\.?)+\s+\d+\s+\(\d{4}\)',
-        # Pattern for statutory citations
-        r'\b\d+\s+U\.S\.C\.\s+§\s*\d+[a-z]?'
     ]
     
+    # Indian law specific citation patterns
+    indian_citation_patterns = [
+        # Supreme Court Reports (SCR)
+        r'\b(\d+)\s+SCR\s+(\d+)(?:\s+\((\d{4})\))?',
+        # Supreme Court Cases (SCC)
+        r'\b(\d+)\s+SCC\s+(\d+)(?:\s+\((\d{4})\))?',
+        # All India Reporter (AIR)
+        r'\bAIR\s+(\d{4})\s+SC\s+(\d+)',
+        r'\bAIR\s+(\d{4})\s+([A-Z][a-z]+)\s+(\d+)',
+        # Indian Law Reports (ILR)
+        r'\bILR\s+(\d{4})\s+([A-Z][a-z]+)\s+(\d+)',
+        # Judgments Today (JT)
+        r'\b(\d+)\s+JT\s+\((\d+)\)\s+(\d+)',
+        # Scale
+        r'\b(\d{4})\s+SCALE\s+(\d+)',
+        # Criminal Law Journal (Cri LJ)
+        r'\b(\d{4})\s+Cri\s*LJ\s+(\d+)',
+        # Weekly Criminal Reports (WCR)
+        r'\b(\d{4})\s+WCR\s+(\d+)',
+        # Consumer Protection Judgments (CPJ)
+        r'\b(\d{4})\s+CPJ\s+(\d+)',
+        # Indian statutory citations
+        r'\bSection\s+(\d+(?:\w)?)\s+of\s+the\s+([A-Za-z\s]+)',
+        r'\bArticle\s+(\d+(?:\w)?)\s+of\s+the\s+Constitution\s+of\s+India'
+    ]
+    
+    all_patterns = general_citation_patterns + indian_citation_patterns
     citations = []
     
-    for pattern in citation_patterns:
-        matches = re.finditer(pattern, text)
+    for pattern in all_patterns:
+        matches = re.finditer(pattern, text, re.IGNORECASE)
         for match in matches:
             match_text = match.group(0)
             
@@ -67,25 +90,83 @@ def extract_case_citations(text: str) -> List[Dict[str, Any]]:
             end_idx = min(len(text), match.end() + 100)
             context = text[start_idx:end_idx]
             
-            # For v. pattern, extract parties and year
+            # For v. pattern and general cases, extract parties and year
             if match.lastindex and match.lastindex >= 2:
-                plaintiff = match.group(1).strip() if match.group(1) else ""
-                defendant = match.group(2).strip() if match.group(2) else ""
-                year = match.group(3) if match.lastindex >= 3 and match.group(3) else "Unknown"
-                
-                citation = {
-                    "citation": match_text,
-                    "plaintiff": plaintiff,
-                    "defendant": defendant,
-                    "year": year,
-                    "context": context
-                }
+                # Handle different citation formats
+                if "SCR" in match_text or "SCC" in match_text:
+                    volume = match.group(1)
+                    page = match.group(2)
+                    year = match.group(3) if match.lastindex >= 3 and match.group(3) else "Unknown"
+                    citation = {
+                        "citation": match_text,
+                        "reporter": "SCR" if "SCR" in match_text else "SCC",
+                        "volume": volume,
+                        "page": page,
+                        "year": year,
+                        "context": context,
+                        "court": "Supreme Court of India"
+                    }
+                elif "AIR" in match_text:
+                    year = match.group(1)
+                    court = match.group(2) if match.lastindex >= 2 else "SC"
+                    page = match.group(3) if match.lastindex >= 3 else match.group(2)
+                    citation = {
+                        "citation": match_text,
+                        "reporter": "AIR",
+                        "year": year,
+                        "court": "Supreme Court" if court == "SC" else f"{court} High Court",
+                        "page": page,
+                        "context": context
+                    }
+                elif "Section" in match_text or "Article" in match_text:
+                    section = match.group(1)
+                    law_name = match.group(2)
+                    citation = {
+                        "citation": match_text,
+                        "type": "statutory",
+                        "section": section,
+                        "law": law_name,
+                        "context": context
+                    }
+                elif "v" in match_text or "versus" in match_text:
+                    plaintiff = match.group(1).strip() if match.group(1) else ""
+                    defendant = match.group(2).strip() if match.group(2) else ""
+                    year = match.group(3) if match.lastindex >= 3 and match.group(3) else "Unknown"
+                    
+                    citation = {
+                        "citation": match_text,
+                        "plaintiff": plaintiff,
+                        "defendant": defendant,
+                        "year": year,
+                        "context": context
+                    }
+                else:
+                    # Generic handler for other formats
+                    citation = {
+                        "citation": match_text,
+                        "context": context
+                    }
             else:
                 citation = {
                     "citation": match_text,
                     "context": context
                 }
-                
+            
+            # Add court type inference for Indian cases
+            if "citation" in citation and "court" not in citation:
+                if "SC" in citation["citation"]:
+                    citation["court"] = "Supreme Court of India"
+                elif any(hc in citation["citation"] for hc in ["Bom", "Del", "Cal", "Mad", "All", "Kar", "Guj", "Pat"]):
+                    # Extract High Court name
+                    hc_match = re.search(r'(Bom|Del|Cal|Mad|All|Kar|Guj|Pat)', citation["citation"])
+                    if hc_match:
+                        hc_code = hc_match.group(1)
+                        hc_map = {
+                            "Bom": "Bombay", "Del": "Delhi", "Cal": "Calcutta", "Mad": "Madras",
+                            "All": "Allahabad", "Kar": "Karnataka", "Guj": "Gujarat", "Pat": "Patna"
+                        }
+                        citation["court"] = f"{hc_map.get(hc_code, hc_code)} High Court"
+            
             citations.append(citation)
     
     return citations
@@ -268,7 +349,7 @@ def generate_example_outcome() -> str:
 
 def generate_example_precedent(arguments: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
-    Generate an example precedent for demonstration purposes.
+    Generate an example precedent for demonstration purposes with focus on Indian law cases.
     
     Args:
         arguments (List[Dict[str, Any]]): Available arguments to incorporate
@@ -276,17 +357,23 @@ def generate_example_precedent(arguments: List[Dict[str, Any]]) -> Dict[str, Any
     Returns:
         Dict[str, Any]: Generated precedent
     """
-    example_cases = [
-        {"case_name": "Smith v. Jones", "year": "2018"},
-        {"case_name": "Johnson v. State", "year": "2019"},
-        {"case_name": "United States v. Williams", "year": "2017"},
-        {"case_name": "People v. Anderson", "year": "2020"},
-        {"case_name": "Brown v. Board of Education", "year": "1954"},
-        {"case_name": "Roe v. Wade", "year": "1973"},
-        {"case_name": "Doe v. Corporation", "year": "2021"},
+    # Landmark Indian law cases
+    indian_cases = [
+        {"case_name": "Kesavananda Bharati v. State of Kerala", "year": "1973", "court": "Supreme Court of India"},
+        {"case_name": "Maneka Gandhi v. Union of India", "year": "1978", "court": "Supreme Court of India"},
+        {"case_name": "Vishaka v. State of Rajasthan", "year": "1997", "court": "Supreme Court of India"},
+        {"case_name": "Mohd. Ahmed Khan v. Shah Bano Begum", "year": "1985", "court": "Supreme Court of India"},
+        {"case_name": "Indra Sawhney v. Union of India", "year": "1992", "court": "Supreme Court of India"},
+        {"case_name": "Olga Tellis v. Bombay Municipal Corporation", "year": "1985", "court": "Supreme Court of India"},
+        {"case_name": "M.C. Mehta v. Union of India", "year": "1987", "court": "Supreme Court of India"},
+        {"case_name": "Justice K.S. Puttaswamy v. Union of India", "year": "2017", "court": "Supreme Court of India"},
+        {"case_name": "Navtej Singh Johar v. Union of India", "year": "2018", "court": "Supreme Court of India"},
+        {"case_name": "Indian Hotel & Restaurant Association v. State of Maharashtra", "year": "2019", "court": "Supreme Court of India"},
+        {"case_name": "Common Cause v. Union of India", "year": "2018", "court": "Supreme Court of India"},
+        {"case_name": "Shreya Singhal v. Union of India", "year": "2015", "court": "Supreme Court of India"}
     ]
     
-    case = random.choice(example_cases)
+    case = random.choice(indian_cases)
     
     # Try to use real arguments if available
     key_points = []
@@ -296,21 +383,30 @@ def generate_example_precedent(arguments: List[Dict[str, Any]]) -> Dict[str, Any
     
     # Fill in if we don't have enough
     while len(key_points) < 3:
-        example_points = [
-            "The court established that the burden of proof lies with the plaintiff in such cases.",
-            "The ruling clarified the interpretation of the relevant statutes.",
-            "This case established the standard for similar future cases.",
-            "The court found that the evidence was insufficient to support the claim.",
-            "The decision emphasized the importance of procedural compliance.",
-            "This precedent restricts the application of the legal principle in question."
+        # Indian law specific example points
+        indian_example_points = [
+            "The court reaffirmed the basic structure doctrine of the Indian Constitution.",
+            "The ruling established that fundamental rights must be interpreted in light of Directive Principles of State Policy.",
+            "This case expanded the interpretation of Article 21 to include the right to live with dignity.",
+            "The court found that personal laws must conform to constitutional principles.",
+            "The decision emphasized the importance of adherence to due process in administrative actions.",
+            "This precedent established guidelines for protection of women in the workplace.",
+            "The court held that environmental protection is part of the right to life under Article 21.",
+            "The judgment recognized the right to privacy as a fundamental right under the Indian Constitution.",
+            "The court established the proportionality test for restrictions on fundamental rights.",
+            "This ruling decriminalized consensual acts between adults of the same gender.",
+            "The decision emphasized the constitutional value of secularism in governance.",
+            "The court applied the principle of reasonable classification under Article 14 equality provisions."
         ]
-        point = random.choice(example_points)
+        
+        point = random.choice(indian_example_points)
         if point not in key_points:
             key_points.append(point)
     
     return {
         "case_name": case["case_name"],
         "year": case["year"],
+        "court": case["court"],
         "relevance": random.choice(["High", "Medium", "Low"]),
         "outcome": generate_example_outcome(),
         "key_points": key_points

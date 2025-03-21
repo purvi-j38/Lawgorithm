@@ -13,6 +13,7 @@ except OSError:
 
 # Dictionary of common legal terms and their plain language explanations
 LEGAL_TERMS = {
+    # General legal terms
     "force majeure": "Unforeseeable circumstances that prevent fulfilling a contract",
     "habeas corpus": "A legal action to determine if someone's detention is lawful",
     "res judicata": "A matter that has been adjudicated and cannot be pursued further",
@@ -59,7 +60,30 @@ LEGAL_TERMS = {
     "indictment": "Formal accusation that someone has committed a crime",
     "acquittal": "Judgment that a person is not guilty of a charge",
     "preponderance of evidence": "Standard of proof requiring that a claim is more likely true than not",
-    "beyond reasonable doubt": "Standard of proof requiring that there is no reasonable doubt of guilt"
+    "beyond reasonable doubt": "Standard of proof requiring that there is no reasonable doubt of guilt",
+    
+    # Indian legal terms
+    "writ petition": "A court petition for extraordinary review, seeking justice when fundamental rights are violated",
+    "suo motu": "Action taken by a court on its own initiative without any party requesting it",
+    "cognizance": "Formal recognition by a court that it has the power to deal with a particular case or matter",
+    "vakalatnama": "Document by which a litigant authorizes an advocate to represent them in court",
+    "lok adalat": "People's court where disputes are settled through compromise and conciliation",
+    "caveat": "A notice given by someone that they have an interest in the matter and should be informed before action is taken",
+    "anticipatory bail": "Bail granted to a person who anticipates arrest for a non-bailable offense",
+    "FIR": "First Information Report, the document prepared by police when they receive information about a cognizable offense",
+    "panchnama": "A memorandum of observation prepared in the presence of five witnesses",
+    "crpc": "Code of Criminal Procedure, the main legislation on procedure for administration of criminal law in India",
+    "cpc": "Code of Civil Procedure, the procedural law related to civil proceedings in India",
+    "ipc": "Indian Penal Code, the main criminal code of India",
+    "pil": "Public Interest Litigation, court case filed to protect the public interest, such as pollution or rights violations",
+    "adr": "Alternative Dispute Resolution, resolving disputes outside the formal court system",
+    "ncdrc": "National Consumer Disputes Redressal Commission, the highest consumer court in India",
+    "dpsp": "Directive Principles of State Policy, guidelines in the Indian Constitution for governance",
+    "section 377": "Previously criminalized homosexual acts in India (partially struck down in 2018)",
+    "fundamental rights": "Basic rights guaranteed to all citizens by the Indian Constitution",
+    "preventive detention": "Detention of a person to prevent possible future crimes",
+    "article 21": "Right to life and personal liberty under the Indian Constitution",
+    "legal aid": "Free legal assistance provided to eligible individuals who cannot afford legal representation"
 }
 
 def translate_legal_jargon(text: str) -> str:
@@ -176,7 +200,7 @@ def identify_legal_phrases(text: str) -> List[Dict[str, str]]:
     legal_phrases = []
     
     # Look for patterns like "pursuant to Section X" or "in accordance with"
-    patterns = [
+    general_patterns = [
         r'pursuant to [\w\s\d\.]+',
         r'in accordance with [\w\s\d\.]+',
         r'notwithstanding [\w\s\d\.]+',
@@ -186,7 +210,32 @@ def identify_legal_phrases(text: str) -> List[Dict[str, str]]:
         r'without prejudice to [\w\s\d\.]+'
     ]
     
-    for pattern in patterns:
+    # Indian legal system specific patterns
+    indian_patterns = [
+        r'Section \d+(?:[A-Z])? of the Indian Penal Code',
+        r'Section \d+(?:[A-Z])? of the Code of Criminal Procedure',
+        r'Section \d+(?:[A-Z])? of the Code of Civil Procedure',
+        r'Article \d+(?:[A-Z])? of the Constitution of India',
+        r'as per the provisions of [\w\s\d\.]+',
+        r'under Order \d+ Rule \d+ of [\w\s\d\.]+',
+        r'Special Leave Petition \(SLP\)',
+        r'writ of [\w\s]+',
+        r'Fundamental Right[s]? under [\w\s\d\.]+',
+        r'directions issued under [\w\s\d\.]+',
+        r'contempt of court',
+        r'review petition',
+        r'curative petition',
+        r'transfer petition',
+        r'vakalatnama executed by [\w\s\d\.]+',
+        r'First Information Report \(FIR\)',
+        r'chargeshee?t filed by [\w\s\d\.]+',
+        r'Public Interest Litigation \(PIL\)'
+    ]
+    
+    # Combine both pattern sets
+    all_patterns = general_patterns + indian_patterns
+    
+    for pattern in all_patterns:
         matches = re.finditer(pattern, text, re.IGNORECASE)
         for match in matches:
             phrase = match.group(0)
