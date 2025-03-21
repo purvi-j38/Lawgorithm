@@ -1,0 +1,129 @@
+import streamlit as st
+import os
+import shutil
+
+def render_settings_page():
+    """Render the settings page."""
+    st.title("Settings")
+    
+    st.subheader("User Preferences")
+    
+    # In a real app, these settings would be saved to a database or local storage
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Email notifications setting
+        email_notifications = st.toggle(
+            "Enable Email Notifications",
+            value=st.session_state.get('email_notifications', False),
+            key='email_notifications'
+        )
+        
+        # Dark mode setting
+        dark_mode = st.toggle(
+            "Dark Mode",
+            value=st.session_state.get('dark_mode', False),
+            key='dark_mode'
+        )
+        
+        # History items setting
+        history_items = st.number_input(
+            "Number of items in history",
+            min_value=5,
+            max_value=50,
+            value=st.session_state.get('history_items', 10),
+            key='history_items'
+        )
+    
+    with col2:
+        # Default export format
+        export_format = st.selectbox(
+            "Default Export Format",
+            options=["PDF", "DOCX", "TXT"],
+            index=["PDF", "DOCX", "TXT"].index(st.session_state.get('export_format', "PDF")),
+            key='export_format'
+        )
+        
+        # Language setting
+        language = st.selectbox(
+            "Language",
+            options=["English", "Spanish", "French"],
+            index=["English", "Spanish", "French"].index(st.session_state.get('language', "English")),
+            key='language'
+        )
+    
+    st.divider()
+    
+    st.subheader("Document Management")
+    
+    # Clear document history
+    if st.button("Clear Document History"):
+        confirm = st.checkbox("I understand this will remove all documents from history")
+        if confirm and st.button("Confirm Clear History"):
+            # Clear document history
+            st.session_state.document_history = []
+            st.session_state.current_document = None
+            
+            # Clear temp files
+            if 'temp_dir' in st.session_state and os.path.exists(st.session_state.temp_dir):
+                try:
+                    shutil.rmtree(st.session_state.temp_dir)
+                    st.session_state.temp_dir = os.path.join(os.getcwd(), "temp_files")
+                    os.makedirs(st.session_state.temp_dir, exist_ok=True)
+                except Exception as e:
+                    st.error(f"Error clearing temporary files: {str(e)}")
+            
+            st.success("Document history cleared!")
+            st.rerun()
+    
+    st.divider()
+    
+    st.subheader("Account")
+    
+    # Change password option
+    if st.button("Change Password"):
+        st.text_input("Current Password", type="password", key="current_pw")
+        new_pw = st.text_input("New Password", type="password", key="new_pw")
+        confirm_pw = st.text_input("Confirm New Password", type="password", key="confirm_pw")
+        
+        if st.button("Update Password"):
+            if new_pw != confirm_pw:
+                st.error("New passwords don't match!")
+            elif not new_pw:
+                st.error("Password cannot be empty")
+            else:
+                # In a real app, this would update the password in a database
+                st.success("Password updated successfully!")
+    
+    # Delete account option
+    if st.button("Delete Account"):
+        st.warning("This action cannot be undone!")
+        confirm = st.checkbox("I understand this action cannot be undone")
+        if confirm and st.button("Confirm Delete"):
+            # In a real app, this would delete the user's account from a database
+            st.session_state.user_logged_in = False
+            st.session_state.username = ""
+            st.success("Account deleted. Redirecting to login...")
+            st.rerun()
+
+    st.divider()
+    
+    st.subheader("About")
+    st.write("""
+    **LegalAI Assistant** v1.0
+    
+    An AI-powered tool for legal document analysis, designed to help lawyers save time and improve accuracy.
+    
+    **Features:**
+    - Document summarization
+    - Timeline extraction
+    - Precedent case matching
+    - Legal jargon translation
+    
+    **Libraries Used:**
+    - Streamlit
+    - spaCy
+    - PyPDF2/pdf2image
+    - pytesseract
+    - Hugging Face Transformers
+    """)
