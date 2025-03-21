@@ -1,19 +1,7 @@
-import os
 import streamlit as st
 from streamlit_option_menu import option_menu
 import tempfile
-import uuid
-import pickle
-import base64
-from pathlib import Path
-
-# Import utility modules
-from utils.document_processor import process_document
-from utils.nlp_analyzer import summarize_document
-from utils.timeline_generator import extract_timeline
-from utils.precedent_finder import find_precedents
-from utils.translation import translate_legal_jargon
-from models.legal_document import LegalDocument
+import time
 
 # Import dark mode function from settings
 from pages.settings import apply_dark_mode
@@ -41,13 +29,6 @@ if 'username' not in st.session_state:
 # Create a session-specific directory for temporary files
 if 'temp_dir' not in st.session_state:
     st.session_state.temp_dir = tempfile.mkdtemp()
-    
-def save_uploaded_file(uploaded_file):
-    """Save an uploaded file to a temporary location and return the path."""
-    file_path = os.path.join(st.session_state.temp_dir, uploaded_file.name)
-    with open(file_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    return file_path
 
 def login_page():
     """Display login page."""
@@ -165,74 +146,9 @@ def main_interface():
 
 def home_page():
     """Home page with document upload and history."""
-    st.title("Document Upload")
-    
-    uploaded_file = st.file_uploader(
-        "Upload a legal document (PDF, DOCX, TXT)",
-        type=["pdf", "docx", "txt"],
-        help="Upload the legal document you want to analyze"
-    )
-    
-    if uploaded_file:
-        with st.spinner("Processing document..."):
-            # Save the uploaded file and process it
-            file_path = save_uploaded_file(uploaded_file)
-            
-            # Process the document
-            processed_text = process_document(file_path, uploaded_file.type)
-            
-            if processed_text:
-                # Create a new document object
-                doc = LegalDocument(
-                    id=str(uuid.uuid4()),
-                    filename=uploaded_file.name,
-                    content=processed_text,
-                    file_type=uploaded_file.type,
-                    file_path=file_path
-                )
-                
-                # Set as current document and add to history (avoid duplicates)
-                st.session_state.current_document = doc
-                
-                # Check if document with same name exists in history
-                duplicate = False
-                for existing_doc in st.session_state.document_history:
-                    if existing_doc.filename == doc.filename:
-                        duplicate = True
-                        break
-                
-                if not duplicate:
-                    st.session_state.document_history.append(doc)
-                
-                st.success(f"Document '{uploaded_file.name}' processed successfully!")
-                st.rerun()
-            else:
-                st.error("Failed to process the document. Please try again.")
-    
-    st.divider()
-    
-    # Display document history
-    st.subheader("Document History")
-    
-    if not st.session_state.document_history:
-        st.info("No documents in history. Upload a document to get started.")
-    else:
-        # Create a dictionary to store latest version of each document by filename
-        unique_docs = {}
-        for doc in st.session_state.document_history:
-            unique_docs[doc.filename] = doc
-        
-        # Display only unique documents
-        for i, (filename, doc) in enumerate(unique_docs.items()):
-            col1, col2, col3 = st.columns([3, 1, 1])
-            with col1:
-                st.write(f"{filename}")
-            with col2:
-                st.write(f"Type: {doc.file_type}")
-            with col3:
-                if st.button("Open", key=f"open_{i}"):
-                    st.session_state.current_document = doc
-                    st.rerun()
+    # Import and render home page
+    from pages.home import render_home_page
+    render_home_page()
 
 def summary_page():
     """Page showing document summary."""
@@ -260,83 +176,9 @@ def translator_page():
 
 def settings_page():
     """Settings page for user preferences."""
-    st.title("Settings")
-    
-    st.subheader("User Preferences")
-    
-    # In a real app, these settings would be saved to a database or local storage
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.toggle("Enable Email Notifications", value=False)
-        
-        # Get dark mode from session state or default to False
-        if 'dark_mode' not in st.session_state:
-            st.session_state.dark_mode = False
-            
-        # Create toggle that updates session state
-        dark_mode = st.toggle("Dark Mode", value=st.session_state.dark_mode)
-        
-        # Update session state if toggle changes
-        if dark_mode != st.session_state.dark_mode:
-            st.session_state.dark_mode = dark_mode
-            # Apply dark mode theme
-            if dark_mode:
-                st.markdown("""
-                <style>
-                    .stApp {
-                        background-color: #1E1E1E;
-                        color: #FFFFFF;
-                    }
-                    .stMarkdown, .stText, h1, h2, h3, h4, h5, h6, p, span, div {
-                        color: #FFFFFF !important;
-                    }
-                    .stTextArea > div > div > textarea {
-                        background-color: #2D2D2D;
-                        color: #FFFFFF;
-                    }
-                    .stButton > button {
-                        background-color: #0E6EF9;
-                        color: #FFFFFF;
-                    }
-                    .stSidebar {
-                        background-color: #252525;
-                    }
-                </style>
-                """, unsafe_allow_html=True)
-            else:
-                # Reset to light mode (let Streamlit handle default styling)
-                st.rerun()
-        
-        st.number_input("Number of items in history", min_value=5, max_value=50, value=10)
-    
-    with col2:
-        st.selectbox("Default Export Format", options=["PDF", "DOCX", "TXT"], index=0)
-        
-        # Updated language options to include Indian languages
-        st.selectbox("Language", options=[
-            "English", 
-            "Hindi", 
-            "Bengali", 
-            "Marathi", 
-            "Tamil", 
-            "Telugu", 
-            "Kannada", 
-            "Malayalam", 
-            "Gujarati", 
-            "Punjabi"
-        ], index=0)
-    
-    st.divider()
-    
-    st.subheader("Account")
-    if st.button("Change Password"):
-        st.info("Password change functionality would be implemented here")
-    
-    if st.button("Delete Account"):
-        confirm = st.checkbox("I understand this action cannot be undone")
-        if confirm and st.button("Confirm Delete"):
-            st.warning("Account deletion would be implemented here")
+    # Import and render settings page
+    from pages.settings import render_settings_page
+    render_settings_page()
 
 # Main app flow
 def main():
