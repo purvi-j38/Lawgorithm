@@ -236,46 +236,9 @@ def home_page():
 
 def summary_page():
     """Page showing document summary."""
-    doc = st.session_state.current_document
-    
-    st.title(f"Summary: {doc.filename}")
-    
-    # Document view and summary side by side
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.subheader("Original Document")
-        st.text_area("Document Content", value=doc.content[:1000] + "...", height=500, disabled=True)
-    
-    with col2:
-        st.subheader("Document Summary")
-        
-        with st.spinner("Generating summary..."):
-            # Generate the summary
-            summary = summarize_document(doc.content)
-            st.markdown(summary)
-    
-    # Export options
-    st.divider()
-    export_options = st.columns([1, 1, 1, 3])
-    
-    with export_options[0]:
-        if st.button("Export as PDF"):
-            # In a real app, this would generate a PDF
-            st.info("PDF export feature will be implemented here")
-    
-    with export_options[1]:
-        if st.button("Export as DOCX"):
-            # In a real app, this would generate a DOCX
-            st.info("DOCX export feature will be implemented here")
-    
-    with export_options[2]:
-        if st.button("Export as TXT"):
-            # Create a download link for the text
-            text_content = f"SUMMARY: {doc.filename}\n\n{summary}\n\nOriginal Document:\n{doc.content}"
-            b64 = base64.b64encode(text_content.encode()).decode()
-            href = f'<a href="data:file/txt;base64,{b64}" download="{doc.filename}_summary.txt">Download TXT</a>'
-            st.markdown(href, unsafe_allow_html=True)
+    # Import and render summary page
+    from pages.summary import render_summary_page
+    render_summary_page()
 
 def timeline_page():
     """Page showing document timeline and deadlines."""
@@ -285,80 +248,15 @@ def timeline_page():
 
 def precedents_page():
     """Page showing precedent cases and relevant legal arguments."""
-    doc = st.session_state.current_document
-    
-    st.title(f"Precedent Cases: {doc.filename}")
-    
-    with st.spinner("Finding precedent cases..."):
-        # Find precedent cases
-        precedents = find_precedents(doc.content)
-        
-        if precedents:
-            st.subheader("Relevant Precedent Cases")
-            
-            for case in precedents:
-                with st.expander(f"{case['case_name']} ({case['year']})"):
-                    st.write(f"**Relevance**: {case['relevance']}")
-                    st.write(f"**Outcome**: {case['outcome']}")
-                    st.write(f"**Key Points**:")
-                    for point in case['key_points']:
-                        st.write(f"- {point}")
-        else:
-            st.info("No relevant precedent cases found for this document.")
+    # Import and render precedents page
+    from pages.precedents import render_precedents_page
+    render_precedents_page()
 
 def translator_page():
     """Page for translating legal jargon to plain language."""
-    doc = st.session_state.current_document
-    
-    st.title(f"Legal Terms Simplifier: {doc.filename}")
-    
-    # Select text to translate
-    st.subheader("Select Text to Translate")
-    text_to_translate = st.text_area(
-        "Enter or paste legal text to translate:",
-        value="",
-        height=200
-    )
-    
-    if st.button("Translate") and text_to_translate:
-        with st.spinner("Translating..."):
-            # Translate the text
-            translated_text = translate_legal_jargon(text_to_translate)
-            
-            st.subheader("Plain Language Translation")
-            st.markdown(translated_text)
-    
-    # Common legal terms glossary
-    st.divider()
-    st.subheader("Common Legal Terms Glossary")
-    
-    tab1, tab2 = st.tabs(["Indian Legal Terms", "General Legal Terms"])
-    
-    with tab1:
-        st.markdown("""
-        - **Writ petition**: A court petition for extraordinary review, seeking justice when fundamental rights are violated
-        - **Suo motu**: Action taken by a court on its own initiative without any party requesting it
-        - **Vakalatnama**: Document by which a litigant authorizes an advocate to represent them in court
-        - **Lok adalat**: People's court where disputes are settled through compromise and conciliation
-        - **FIR**: First Information Report, the document prepared by police when they receive information about a cognizable offense
-        - **IPC**: Indian Penal Code, the main criminal code of India
-        - **CPC**: Code of Civil Procedure, the procedural law related to civil proceedings in India
-        - **CrPC**: Code of Criminal Procedure, the main legislation on procedure for administration of criminal law in India
-        - **PIL**: Public Interest Litigation, court case filed to protect the public interest
-        - **Anticipatory bail**: Bail granted to a person who anticipates arrest for a non-bailable offense
-        """)
-        
-    with tab2:
-        st.markdown("""
-        - **Force majeure**: Unforeseeable circumstances that prevent fulfilling a contract
-        - **Habeas corpus**: A legal action to determine if someone's detention is lawful
-        - **Res judicata**: A matter that has been adjudicated and cannot be pursued further
-        - **Prima facie**: Based on first impression or accepted as correct until proven otherwise
-        - **Voir dire**: Preliminary examination of a witness or juror
-        - **Stare decisis**: Legal principle of determining points based on precedent
-        - **Mens rea**: The intention or knowledge of wrongdoing
-        - **Actus reus**: The action or conduct that is a constituent element of a crime
-        """)
+    # Import and render translator page
+    from pages.translator import render_translator_page
+    render_translator_page()
 
 def settings_page():
     """Settings page for user preferences."""
