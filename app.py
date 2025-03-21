@@ -94,8 +94,8 @@ def main_interface():
         
         selected_tab = option_menu(
             "Navigation",
-            ["Home", "Summary", "Timeline", "Precedents", "Legal Terms Simplifier", "Settings"],
-            icons=["house", "file-text", "calendar", "search", "translate", "gear"],
+            ["Home", "Summary", "Timeline", "Precedents", "Legal Terms Simplifier", "AI Chat", "Settings"],
+            icons=["house", "file-text", "calendar", "search", "translate", "chat-dots", "gear"],
             menu_icon="list",
             default_index=0,
         )
@@ -132,9 +132,13 @@ def main_interface():
         precedents_page()
     elif selected_tab == "Legal Terms Simplifier" and st.session_state.current_document:
         translator_page()
+    elif selected_tab == "AI Chat":
+        # Import and render chatbot page
+        from pages.chatbot import render_chatbot_page
+        render_chatbot_page()
     elif selected_tab == "Settings":
         settings_page()
-    elif selected_tab != "Home":
+    elif selected_tab != "Home" and selected_tab != "AI Chat":
         st.warning("Please upload a document first.")
 
 def home_page():
