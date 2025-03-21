@@ -30,8 +30,17 @@ def render_timeline_page():
         # Create a DataFrame for display
         df = pd.DataFrame(timeline_data)
         
-        # Display timeline in table format
-        st.dataframe(df)
+        # Reorder and select columns for better display
+        if all(col in df.columns for col in ["Date", "Type", "Description", "Context"]):
+            df = df[["Date", "Type", "Description", "Context"]]
+        
+        # Display timeline in table format with better styling
+        st.dataframe(df, use_container_width=True, column_config={
+            "Date": st.column_config.TextColumn("Date"),
+            "Type": st.column_config.TextColumn("Type"),
+            "Description": st.column_config.TextColumn("Description", width="large"),
+            "Context": st.column_config.TextColumn("Context", width="large")
+        })
         
         # Visual timeline if we have dates that can be parsed
         st.subheader("Visual Timeline")

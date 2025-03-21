@@ -22,6 +22,8 @@ def extract_timeline(text: str) -> List[Dict[str, Any]]:
     Returns:
         List[Dict[str, Any]]: List of timeline events with date, description, and source
     """
+    # For proper formatting in the timeline view
+    import pandas as pd
     # Process the text with spaCy
     doc = nlp(text[:100000])  # Limit text size for processing
     

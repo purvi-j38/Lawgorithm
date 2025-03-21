@@ -104,6 +104,12 @@ class LegalChatbot:
         # Add to conversation history
         self.conversation_history.append({"role": "user", "content": query})
         
+        # Check for specific Indian law queries
+        indian_law_response = self._check_indian_law_query(query)
+        if indian_law_response:
+            self.conversation_history.append({"role": "assistant", "content": indian_law_response})
+            return indian_law_response
+            
         # Try to generate response using RAG pipeline first
         if self.document_context is not None:
             rag_response, chunks = rag_pipeline.query(query)
@@ -121,10 +127,73 @@ class LegalChatbot:
                     self.conversation_history.append({"role": "assistant", "content": response})
                     return response
         
-        # Default fallback
-        fallback_response = "I don't have enough information to answer that question about Indian law. Could you try rephrasing it?"
+        # Default fallback with better message
+        fallback_response = "I don't have specific information on that Indian law topic. For the hackathon demo, my knowledge is limited. In a production version, I would connect to Indian law databases like IndianKanoon.org to provide accurate responses."
         self.conversation_history.append({"role": "assistant", "content": fallback_response})
         return fallback_response
+        
+    def _check_indian_law_query(self, query: str) -> str:
+        """
+        Check for specific Indian law queries and provide hardcoded responses for demo purposes.
+        In a real system, this would be connected to an actual legal database.
+        
+        Args:
+            query (str): User query
+            
+        Returns:
+            str or None: Response for Indian law query or None
+        """
+        query_lower = query.lower()
+        
+        # Check for common IPC queries
+        if "section 370" in query_lower or "article 370" in query_lower:
+            return ("Article 370 of the Indian Constitution granted special autonomous status to Jammu and Kashmir. "
+                   "It was revoked in August 2019 through a Presidential Order and the passage of the Jammu and Kashmir Reorganisation Act.")
+        
+        if "section 377" in query_lower:
+            return ("Section 377 of the Indian Penal Code criminalized 'carnal intercourse against the order of nature'. "
+                   "In September 2018, the Supreme Court of India decriminalized consensual homosexual acts by declaring the relevant portions of Section 377 unconstitutional.")
+        
+        if "section 302" in query_lower:
+            return ("Section 302 of the Indian Penal Code deals with punishment for murder. It states: 'Whoever commits murder shall be punished with death, or imprisonment for life, and shall also be liable to fine.'")
+        
+        if "section 498a" in query_lower:
+            return ("Section 498A of the Indian Penal Code deals with husband or relative of husband of a woman subjecting her to cruelty. "
+                   "It is a cognizable, non-bailable, and non-compoundable offense, designed to protect women from domestic violence and dowry harassment.")
+        
+        if "section 144" in query_lower:
+            return ("Section 144 of the Criminal Procedure Code (CrPC) empowers a district magistrate to prohibit the assembly of four or more people in an area. "
+                   "It is often used to impose restrictions to prevent disturbances of public tranquility.")
+        
+        # Famous Indian cases
+        if "kesavananda bharati" in query_lower:
+            return ("Kesavananda Bharati v. State of Kerala (1973) is one of the most important cases in Indian constitutional history. "
+                   "The Supreme Court established the 'basic structure doctrine', holding that Parliament cannot amend the basic structure of the Constitution.")
+        
+        if "vishaka" in query_lower and "sexual harassment" in query_lower:
+            return ("Vishaka v. State of Rajasthan (1997) was a landmark case where the Supreme Court laid down guidelines to address sexual harassment at the workplace, "
+                   "which later formed the basis for the Sexual Harassment of Women at Workplace (Prevention, Prohibition and Redressal) Act, 2013.")
+        
+        # Indian Constitution
+        if "fundamental rights" in query_lower and "india" in query_lower:
+            return ("The Fundamental Rights in the Indian Constitution include: Right to Equality (Articles 14-18), Right to Freedom (Articles 19-22), "
+                   "Right against Exploitation (Articles 23-24), Right to Freedom of Religion (Articles 25-28), Cultural and Educational Rights (Articles 29-30), "
+                   "and Right to Constitutional Remedies (Article 32).")
+        
+        if "directive principles" in query_lower:
+            return ("The Directive Principles of State Policy in the Indian Constitution (Articles 36-51) are guidelines for the government to establish a just "
+                   "social order. While not enforceable in courts, they are fundamental in governance and policymaking.")
+        
+        # Generic Indian legal system
+        if "pil" in query_lower or "public interest litigation" in query_lower:
+            return ("Public Interest Litigation (PIL) in India allows any public-spirited person to approach the Supreme Court or High Courts seeking justice "
+                   "for those unable to do so themselves. It was introduced in the 1980s and has been instrumental in advancing social justice and human rights in India.")
+        
+        if "lok adalat" in query_lower:
+            return ("Lok Adalat ('People's Court') is an alternative dispute resolution mechanism in India that allows for settlement of cases pending before courts "
+                   "through conciliation and compromise. It was established under the Legal Services Authorities Act, 1987.")
+            
+        return None
     
     def _fill_response_template(self, template: str, match: re.Match, category: str) -> str:
         """

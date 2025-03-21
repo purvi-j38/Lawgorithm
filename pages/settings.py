@@ -49,13 +49,6 @@ def render_settings_page():
     col1, col2 = st.columns(2)
     
     with col1:
-        # Email notifications setting
-        email_notifications = st.toggle(
-            "Enable Email Notifications",
-            value=st.session_state.get('email_notifications', False),
-            key='email_notifications'
-        )
-        
         # Dark mode setting
         dark_mode = st.toggle(
             "Dark Mode",
@@ -83,12 +76,30 @@ def render_settings_page():
         )
         
         # Language setting
+        language_options = ["English", "Hindi", "Bengali", "Marathi", "Tamil", "Telugu", "Gujarati", "Kannada", "Malayalam", "Punjabi", "Urdu"]
+        current_language = st.session_state.get('language', "English")
+        
+        # Make sure current_language is valid
+        if current_language not in language_options:
+            current_language = "English"
+            
         language = st.selectbox(
             "Language",
-            options=["English", "Hindi", "Bengali", "Marathi", "Tamil", "Telugu", "Gujarati", "Kannada", "Malayalam", "Punjabi", "Urdu"],
-            index=["English", "Hindi", "Bengali", "Marathi", "Tamil", "Telugu", "Gujarati", "Kannada", "Malayalam", "Punjabi", "Urdu"].index(st.session_state.get('language', "English")),
+            options=language_options,
+            index=language_options.index(current_language),
             key='language'
         )
+        
+        # Apply language change
+        if language != st.session_state.get('previous_language', "English"):
+            st.session_state.previous_language = language
+            
+            # Here we would add translations in a real multilingual app
+            # For the hackathon demo, we'll just show a notification
+            st.info(f"Language changed to {language}. In a production app, all UI text would be translated.")
+            
+            # Keep this value in session state
+            st.session_state.language = language
     
     st.divider()
     
