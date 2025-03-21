@@ -2,6 +2,43 @@ import streamlit as st
 import os
 import shutil
 
+def apply_dark_mode():
+    """Apply dark mode CSS if enabled in settings."""
+    if st.session_state.get('dark_mode', False):
+        # Apply dark mode CSS
+        dark_mode_css = """
+        <style>
+            .stApp {
+                background-color: #111;
+                color: #f0f0f0;
+            }
+            .stTextInput, .stNumberInput, .stSelectbox {
+                background-color: #222;
+                color: #f0f0f0;
+                border-color: #444;
+            }
+            .stSidebar {
+                background-color: #222;
+            }
+            .stButton button {
+                background-color: #0078cc;
+                color: white;
+            }
+            .stMarkdown, p, h1, h2, h3, h4, h5, h6 {
+                color: #f0f0f0 !important;
+            }
+            div[data-testid="stExpander"] {
+                background-color: #222;
+                border-color: #444;
+            }
+            div[data-testid="stForm"] {
+                background-color: #222;
+                border-color: #444;
+            }
+        </style>
+        """
+        st.markdown(dark_mode_css, unsafe_allow_html=True)
+
 def render_settings_page():
     """Render the settings page."""
     st.title("Settings")
@@ -23,7 +60,8 @@ def render_settings_page():
         dark_mode = st.toggle(
             "Dark Mode",
             value=st.session_state.get('dark_mode', False),
-            key='dark_mode'
+            key='dark_mode',
+            on_change=apply_dark_mode
         )
         
         # History items setting
@@ -47,8 +85,8 @@ def render_settings_page():
         # Language setting
         language = st.selectbox(
             "Language",
-            options=["English", "Spanish", "French"],
-            index=["English", "Spanish", "French"].index(st.session_state.get('language', "English")),
+            options=["English", "Hindi", "Bengali", "Marathi", "Tamil", "Telugu", "Gujarati", "Kannada", "Malayalam", "Punjabi", "Urdu"],
+            index=["English", "Hindi", "Bengali", "Marathi", "Tamil", "Telugu", "Gujarati", "Kannada", "Malayalam", "Punjabi", "Urdu"].index(st.session_state.get('language', "English")),
             key='language'
         )
     

@@ -15,6 +15,9 @@ from utils.precedent_finder import find_precedents
 from utils.translation import translate_legal_jargon
 from models.legal_document import LegalDocument
 
+# Import dark mode function from settings
+from pages.settings import apply_dark_mode
+
 # Set page configuration
 st.set_page_config(
     page_title="LegalAI Assistant",
@@ -91,7 +94,7 @@ def main_interface():
         
         selected_tab = option_menu(
             "Navigation",
-            ["Home", "Summary", "Timeline", "Precedents", "Legal Translator", "Settings"],
+            ["Home", "Summary", "Timeline", "Precedents", "Legal Terms Simplifier", "Settings"],
             icons=["house", "file-text", "calendar", "search", "translate", "gear"],
             menu_icon="list",
             default_index=0,
@@ -127,7 +130,7 @@ def main_interface():
         timeline_page()
     elif selected_tab == "Precedents" and st.session_state.current_document:
         precedents_page()
-    elif selected_tab == "Legal Translator" and st.session_state.current_document:
+    elif selected_tab == "Legal Terms Simplifier" and st.session_state.current_document:
         translator_page()
     elif selected_tab == "Settings":
         settings_page()
@@ -162,9 +165,18 @@ def home_page():
                     file_path=file_path
                 )
                 
-                # Set as current document and add to history
+                # Set as current document and add to history (avoid duplicates)
                 st.session_state.current_document = doc
-                st.session_state.document_history.append(doc)
+                
+                # Check if document with same name exists in history
+                duplicate = False
+                for existing_doc in st.session_state.document_history:
+                    if existing_doc.filename == doc.filename:
+                        duplicate = True
+                        break
+                
+                if not duplicate:
+                    st.session_state.document_history.append(doc)
                 
                 st.success(f"Document '{uploaded_file.name}' processed successfully!")
                 st.rerun()
@@ -179,10 +191,16 @@ def home_page():
     if not st.session_state.document_history:
         st.info("No documents in history. Upload a document to get started.")
     else:
-        for i, doc in enumerate(reversed(st.session_state.document_history)):
+        # Create a dictionary to store latest version of each document by filename
+        unique_docs = {}
+        for doc in st.session_state.document_history:
+            unique_docs[doc.filename] = doc
+        
+        # Display only unique documents
+        for i, (filename, doc) in enumerate(unique_docs.items()):
             col1, col2, col3 = st.columns([3, 1, 1])
             with col1:
-                st.write(f"{doc.filename}")
+                st.write(f"{filename}")
             with col2:
                 st.write(f"Type: {doc.file_type}")
             with col3:
@@ -283,7 +301,7 @@ def translator_page():
     """Page for translating legal jargon to plain language."""
     doc = st.session_state.current_document
     
-    st.title(f"Legal Jargon Translator: {doc.filename}")
+    st.title(f"Legal Terms Simplifier: {doc.filename}")
     
     # Select text to translate
     st.subheader("Select Text to Translate")
@@ -344,12 +362,63 @@ def settings_page():
     
     with col1:
         st.toggle("Enable Email Notifications", value=False)
-        st.toggle("Dark Mode", value=False)
+        
+        # Get dark mode from session state or default to False
+        if 'dark_mode' not in st.session_state:
+            st.session_state.dark_mode = False
+            
+        # Create toggle that updates session state
+        dark_mode = st.toggle("Dark Mode", value=st.session_state.dark_mode)
+        
+        # Update session state if toggle changes
+        if dark_mode != st.session_state.dark_mode:
+            st.session_state.dark_mode = dark_mode
+            # Apply dark mode theme
+            if dark_mode:
+                st.markdown("""
+                <style>
+                    .stApp {
+                        background-color: #1E1E1E;
+                        color: #FFFFFF;
+                    }
+                    .stMarkdown, .stText, h1, h2, h3, h4, h5, h6, p, span, div {
+                        color: #FFFFFF !important;
+                    }
+                    .stTextArea > div > div > textarea {
+                        background-color: #2D2D2D;
+                        color: #FFFFFF;
+                    }
+                    .stButton > button {
+                        background-color: #0E6EF9;
+                        color: #FFFFFF;
+                    }
+                    .stSidebar {
+                        background-color: #252525;
+                    }
+                </style>
+                """, unsafe_allow_html=True)
+            else:
+                # Reset to light mode (let Streamlit handle default styling)
+                st.rerun()
+        
         st.number_input("Number of items in history", min_value=5, max_value=50, value=10)
     
     with col2:
         st.selectbox("Default Export Format", options=["PDF", "DOCX", "TXT"], index=0)
-        st.selectbox("Language", options=["English", "Spanish", "French"], index=0)
+        
+        # Updated language options to include Indian languages
+        st.selectbox("Language", options=[
+            "English", 
+            "Hindi", 
+            "Bengali", 
+            "Marathi", 
+            "Tamil", 
+            "Telugu", 
+            "Kannada", 
+            "Malayalam", 
+            "Gujarati", 
+            "Punjabi"
+        ], index=0)
     
     st.divider()
     

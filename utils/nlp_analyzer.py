@@ -191,6 +191,7 @@ def split_text_into_chunks(text: str, chunk_size: int = 500) -> List[str]:
 def extract_key_sentences(text: str) -> str:
     """
     Extract key sentences from text as a basic summarization method.
+    Makes a more concise summary by selecting fewer sentences.
     
     Args:
         text (str): Text to extract key sentences from
@@ -198,17 +199,32 @@ def extract_key_sentences(text: str) -> str:
     Returns:
         str: Extracted key sentences joined as a summary
     """
-    doc = nlp(text)
+    doc = nlp(text[:10000])  # Limit text size for processing
     
     # Get sentences
     sentences = [sent.text.strip() for sent in doc.sents]
     
-    # Basic heuristic: take first 2 sentences and then every 5th sentence
-    key_sentences = sentences[:2]
-    if len(sentences) > 5:
-        key_sentences.extend([sentences[i] for i in range(4, len(sentences), 5) if i < len(sentences)])
+    # More concise heuristic: take only first sentence and then every 10th sentence
+    # with a maximum of 5 sentences total
+    key_sentences = sentences[:1]
     
-    return " ".join(key_sentences)
+    if len(sentences) > 10:
+        additional_sentences = [sentences[i] for i in range(9, min(len(sentences), 50), 10)]
+        # Limit to a maximum of 4 additional sentences
+        key_sentences.extend(additional_sentences[:4])
+    
+    # If we have very few sentences, use what we have
+    if len(key_sentences) < 2 and len(sentences) > 1:
+        key_sentences.append(sentences[1])
+        
+    # Join sentences and ensure the summary is not too verbose
+    summary = " ".join(key_sentences)
+    
+    # If summary is still too long, truncate it
+    if len(summary) > 500:
+        summary = summary[:497] + "..."
+        
+    return summary
 
 def extract_named_entities(text: str) -> Dict[str, List[str]]:
     """
