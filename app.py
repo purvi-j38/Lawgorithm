@@ -51,8 +51,30 @@ def save_uploaded_file(uploaded_file):
 
 def login_page():
     """Display login page."""
+    # Hide navigation elements before login
+    hide_navigation_css = """
+    <style>
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        .stApp > header {display: none !important;}
+    </style>
+    """
+    st.markdown(hide_navigation_css, unsafe_allow_html=True)
+    
     st.title("Welcome to LegalAI Assistant")
     st.markdown("### Indian Legal Document Analysis Platform")
+    
+    # Display features section above login
+    st.write("""
+    **Features:**
+    - 📄 Document Summarization - Get concise summaries of complex legal documents
+    - ⏱️ Timeline Extraction - Automatically identify key dates and deadlines
+    - ⚖️ Precedent Case Matching - Find relevant case law and legal precedents
+    - 💬 Legal Terms Simplifier - Translate complex legal jargon to plain language
+    - 💻 AI Chatbot - Ask questions about Indian law and your documents
+    """)
+    
+    st.divider()
     
     col1, col2 = st.columns([1, 1])
     
@@ -257,26 +279,9 @@ def summary_page():
 
 def timeline_page():
     """Page showing document timeline and deadlines."""
-    doc = st.session_state.current_document
-    
-    st.title(f"Timeline: {doc.filename}")
-    
-    with st.spinner("Extracting timeline..."):
-        # Extract timeline from the document
-        timeline_data = extract_timeline(doc.content)
-        
-        if timeline_data:
-            st.subheader("Important Dates and Deadlines")
-            
-            # Display timeline in table format
-            st.table(timeline_data)
-            
-            # Visual timeline
-            st.subheader("Visual Timeline")
-            # In a real app, this would create a visual timeline with Plotly or similar
-            st.info("Visual timeline will be displayed here using Plotly")
-        else:
-            st.info("No timeline information found in this document.")
+    # Import and render timeline page
+    from pages.timeline import render_timeline_page
+    render_timeline_page()
 
 def precedents_page():
     """Page showing precedent cases and relevant legal arguments."""

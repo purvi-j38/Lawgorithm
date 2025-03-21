@@ -132,7 +132,7 @@ class LegalChatbot:
         self.conversation_history.append({"role": "assistant", "content": fallback_response})
         return fallback_response
         
-    def _check_indian_law_query(self, query: str) -> str:
+    def _check_indian_law_query(self, query: str) -> Optional[str]:
         """
         Check for specific Indian law queries and provide hardcoded responses for demo purposes.
         In a real system, this would be connected to an actual legal database.
@@ -141,7 +141,7 @@ class LegalChatbot:
             query (str): User query
             
         Returns:
-            str or None: Response for Indian law query or None
+            Optional[str]: Response for Indian law query or None
         """
         query_lower = query.lower()
         
