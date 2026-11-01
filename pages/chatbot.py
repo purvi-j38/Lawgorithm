@@ -56,6 +56,7 @@ def render_chatbot_page():
           - Indian Penal Code (IPC)
           - Code of Criminal Procedure (CrPC)
           - Code of Civil Procedure (CPC)
+          - Bharatiya Nyaya Sanhita (BNS)
           - Constitutional provisions
           
         Note: This assistant provides general information, not personalized legal advice.

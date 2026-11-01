@@ -90,14 +90,13 @@ def login_page():
 
 def main_interface():
     """Display the main interface after login."""
-    # Sidebar navigation
     with st.sidebar:
         st.title("LegalAI Assistant")
         st.write(f"Welcome, {st.session_state.username}")
         
         selected_tab = option_menu(
             "Navigation",
-            ["Home", "Summary", "Timeline", "Precedents", "Legal Terms Simplifier", "AI Chat", "Settings"],
+            ["Home", "Summary", "Timeline", "Precedents", "Legal Terms Simplifier", "VERA", "Settings"],
             icons=["house", "file-text", "calendar", "search", "translate", "chat-dots", "gear"],
             menu_icon="list",
             default_index=0,
@@ -106,9 +105,8 @@ def main_interface():
         st.divider()
         st.subheader("Notes")
         
-        # Display and edit notes for the current document
         if st.session_state.current_document:
-            doc_id = st.session_state.current_document.id
+            doc_id = st.session_state.current_document.id  
             if doc_id not in st.session_state.notes:
                 st.session_state.notes[doc_id] = ""
             
@@ -135,9 +133,8 @@ def main_interface():
         precedents_page()
     elif selected_tab == "Legal Terms Simplifier" and st.session_state.current_document:
         translator_page()
-    elif selected_tab == "AI Chat":
-        # Import and render chatbot page
-        from pages.chatbot import render_chatbot_page
+    elif selected_tab == "VERA":
+        from utils.chatbot import render_chatbot_page
         render_chatbot_page()
     elif selected_tab == "Settings":
         settings_page()
@@ -180,10 +177,8 @@ def settings_page():
     from pages.settings import render_settings_page
     render_settings_page()
 
-# Main app flow
 def main():
     """Main application flow."""
-    # Display short splash screen on first load
     if not st.session_state.get('app_loaded', False):
         st.markdown(
             """
@@ -191,17 +186,16 @@ def main():
                 <h1>⚖️ LegalAI Assistant</h1>
                 <p>Your AI-powered Indian legal document analyzer</p>
                 <h3>Simplifying Indian legal research and analysis</h3>
-                <p style='font-size: 0.9em;'>Specialized in IPC, CPC, CrPC and Indian case law</p>
+                <p style='font-size: 0.9em;'>Specialized in IPC, CPC, CrPC, BNS and Indian case law</p>
             </div>
             """, 
             unsafe_allow_html=True
         )
         st.session_state.app_loaded = True
         import time
-        time.sleep(1)
+        time.sleep(5)
         st.rerun()
     
-    # Flow control based on login state
     if not st.session_state.user_logged_in:
         login_page()
     else:

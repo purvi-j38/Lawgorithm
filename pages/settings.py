@@ -168,11 +168,12 @@ def render_settings_page():
     - Timeline extraction
     - Precedent case matching
     - Legal jargon translation
+    - AI Chatbot
     
     **Libraries Used:**
     - Streamlit
     - spaCy
     - PyPDF2/pdf2image
     - pytesseract
-    - Hugging Face Transformers
+    - and more... definitely
     """)

@@ -1,6 +1,8 @@
 import streamlit as st
 import base64
 import io
+import os
+import sys
 from utils.nlp_analyzer import summarize_document
 
 def render_summary_page():

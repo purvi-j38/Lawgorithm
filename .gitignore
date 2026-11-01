@@ -1,0 +1,19 @@
+# Python environments
+venv/
+env/
+latest/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Secrets
+.env
+.env.*
+
+# IDE
+.vscode/
+
+# Other
+.DS_Store
