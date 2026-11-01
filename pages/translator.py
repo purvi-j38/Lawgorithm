@@ -1,95 +1,120 @@
 import streamlit as st
-from utils.translation import translate_legal_jargon, simplify_legal_document
+from utils.translation import translate_legal_jargon, simplify_legal_document, LEGAL_TERMS
+
+_CARD_CSS = """
+<style>
+.law-header {
+    border-left: 4px solid #1a3a5c;
+    padding: 0.6rem 1rem;
+    margin-bottom: 1.5rem;
+    background: linear-gradient(90deg, #f0f4f8 0%, #fff 100%);
+    border-radius: 0 6px 6px 0;
+}
+.law-header h2 { margin:0; color:#1a3a5c; font-family:Georgia,serif; }
+.law-header p  { margin:0; color:#64748b; font-size:0.85rem; }
+</style>
+"""
 
 def render_translator_page():
-    """Render the legal jargon translator page."""
     doc = st.session_state.current_document
-    
     if not doc:
         st.warning("Please upload a document first.")
         return
-    
-    st.title(f"Legal Jargon Translator: {doc.filename}")
-    
-    # Tabs for different translation modes
-    tab1, tab2 = st.tabs(["Translate Selection", "Simplify Document"])
-    
+
+    st.markdown(_CARD_CSS, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class="law-header">
+        <h2>⚖️ Legal Terms Simplifier</h2>
+        <p>TF-IDF Ranking · Named Entity Preservation · Exact Legal Mapping · Instant Execution</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    tab1, tab2, tab3 = st.tabs(["📄 Analyse Passage", "📋 Simplify Document", "📚 Complete Glossary"])
+
     with tab1:
-        # Select text to translate
-        st.subheader("Select Text to Translate")
-        
-        # Option to select from document or enter manually
-        selection_method = st.radio(
-            "Text Source",
-            ["Extract from Document", "Enter Manually"]
+        st.markdown("##### Select or enter a passage to decode complex legalese")
+
+        source = st.radio(
+            "Text source",
+            ["Extract from document", "Enter manually"],
+            horizontal=True,
+            label_visibility="collapsed",
         )
-        
-        if selection_method == "Extract from Document":
-            # Show the document and let user select a portion
-            st.write("Document Content (select a portion to translate):")
-            
-            # Display a small portion of the document at a time to make selection manageable
-            start_pos = st.slider("Document Position", 0, max(0, len(doc.content) - 1000), 0)
-            excerpt = doc.content[start_pos:start_pos + 1000]
-            
-            text_to_translate = st.text_area(
-                "Selected Text:",
-                value=excerpt,
-                height=200
+
+        if source == "Extract from document":
+            max_pos = max(0, len(doc.content) - 2000)
+            pos = st.slider(
+                "Scroll through document",
+                min_value=0, max_value=max_pos, value=0, step=500,
+                format="char %d",
+            )
+            excerpt = doc.content[pos : pos + 2000]
+            text_in = st.text_area(
+                "Passage (editable)", value=excerpt, height=230,
+                label_visibility="visible",
             )
         else:
-            text_to_translate = st.text_area(
-                "Enter or paste legal text to translate:",
-                value="",
-                height=200
+            text_in = st.text_area(
+                "Paste legal passage:",
+                height=230,
+                placeholder="e.g. The appellant filed an application under Section 438 CrPC seeking anticipatory bail...",
             )
-        
-        if st.button("Translate") and text_to_translate:
-            with st.spinner("Translating..."):
-                # Translate the text
-                translated_text = translate_legal_jargon(text_to_translate)
-                
-                st.subheader("Plain Language Translation")
-                st.markdown(translated_text)
-    
+
+        if st.button("🔍 Identify & Explain Terms", type="primary", use_container_width=True):
+            if text_in.strip():
+                with st.spinner("Decoding legal terminology…"):
+                    result = translate_legal_jargon(text_in)
+                st.divider()
+                st.markdown(result)
+            else:
+                st.warning("Please enter text to analyse.")
+
     with tab2:
-        st.subheader("Simplify Entire Document")
-        st.write("This will attempt to translate the entire document into plain language.")
-        st.warning("Processing large documents may take some time.")
-        
-        if st.button("Simplify Document"):
-            with st.spinner("Simplifying document..."):
-                # For very large documents, only process a portion
-                if len(doc.content) > 20000:
-                    st.info("Document is large, processing first 20,000 characters only.")
-                    text_to_process = doc.content[:20000]
-                else:
-                    text_to_process = doc.content
-                
-                simplified_text = simplify_legal_document(text_to_process)
-                
-                st.subheader("Simplified Document")
-                st.markdown(simplified_text)
-    
-    # Common legal terms glossary
-    st.divider()
-    st.subheader("Common Legal Terms Glossary")
-    
-    with st.expander("View Glossary"):
-        st.markdown("""
-        - **Force majeure**: Unforeseeable circumstances that prevent fulfilling a contract
-        - **Habeas corpus**: A legal action to determine if someone's detention is lawful
-        - **Res judicata**: A matter that has been adjudicated and cannot be pursued further
-        - **Prima facie**: Based on first impression or accepted as correct until proven otherwise
-        - **Voir dire**: Preliminary examination of a witness or juror
-        - **Stare decisis**: Legal principle of determining points based on precedent
-        - **Mens rea**: The intention or knowledge of wrongdoing
-        - **Actus reus**: The action or conduct that is a constituent element of a crime
-        - **Pro se**: Representing oneself in court without an attorney
-        - **De novo**: Starting anew, as if previous proceedings did not occur
-        - **Pro bono**: Legal work done for free or for the public good
-        - **Ex parte**: A legal proceeding brought by one person without the other party knowing
-        - **Amicus curiae**: Friend of the court; someone who offers information or insight to the court
-        - **In camera**: In private, in a judge's chambers
-        - **Inter alia**: Among other things
-        """)
+        char_count = len(doc.content)
+        limit = 35000
+
+        col1, col2 = st.columns(2)
+        col1.metric("Document Character Count", f"{char_count:,}")
+        col2.metric("Characters In Scope", f"{min(char_count, limit):,}")
+
+        if char_count > limit:
+            st.info(f"Large document: processing first {limit:,} characters for high efficiency.")
+
+        st.markdown(
+            "Performs NER to preserve names, courts and dates, then extracts all legal terms "
+            "ranked by document TF-IDF relevance with plain-language definitions."
+        )
+
+        if st.button("📋 Simplify Full Document", type="primary", use_container_width=True):
+            with st.spinner("Extracting entities & ranking jargon…"):
+                result = simplify_legal_document(doc.content[:limit])
+            st.divider()
+            st.markdown(result)
+
+    with tab3:
+        st.markdown(f"##### Indian & Common Law Legal Glossary ({len(LEGAL_TERMS)} Terms)")
+
+        search = st.text_input(
+            "Filter terms",
+            placeholder="Type to search (e.g. bail, cognizance, fir, res judicata, mandamus)...",
+            label_visibility="collapsed",
+        )
+
+        sq = search.lower().strip()
+        filtered = {
+            k: v for k, v in LEGAL_TERMS.items()
+            if not sq or sq in k or sq in v[0].lower() or sq in v[1].lower()
+        }
+
+        st.caption(f"Showing {len(filtered)} of {len(LEGAL_TERMS)} catalogued terms")
+
+        items = list(filtered.items())
+        mid = (len(items) + 1) // 2
+        col_a, col_b = st.columns(2)
+
+        for col, chunk in zip([col_a, col_b], [items[:mid], items[mid:]]):
+            with col:
+                for key, (display, expl) in chunk:
+                    with st.expander(f"**{display}**"):
+                        st.write(expl)

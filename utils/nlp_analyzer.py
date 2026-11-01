@@ -1,151 +1,336 @@
-# utils/nlp_analyzer.py
+"""
+Legal Document NLP Analyzer
+TextRank + TF-IDF + LSA + NER
+Generates an executive, clear, high-stake legal summary without using any LLM.
+"""
 
-import spacy
 import re
+import math
 import sys
 import subprocess
-from typing import Dict, List
+import numpy as np
+import spacy
+from typing import Dict, List, Tuple, Any
+from collections import defaultdict
 
 INDIAN_LEGAL_PATTERNS = {
-    'IPC_SECTION': r'(?:Section|Sec\.?|S\.?)\s*(\d+[A-Za-z]*(?:\(\d+\))?)\s+(?:of\s+)?IPC',
-    'CRPC_SECTION': r'(?:Section|Sec\.?|S\.?)\s*(\d+[A-Za-z]*(?:\(\d+\))?)\s+(?:of\s+)?Cr?PC',
-    'CONSTITUTION': r'Article\s+\d+\s+of\s+the\s+Constitution|Art\.?\s+\d+',
-    'EVIDENCE_ACT_SECTION': r'(?:Section|Sec\.?|S\.?)\s*(\d+[A-Za-z]*(?:\(\d+\))?)\s+(?:of\s+)?Evidence Act',
-    'EXHIBIT_REF': r'Exhibit\s+([A-Z0-9\-]+)',
-    'FIR_NUMBER': r'FIR\s+No\.?\s*([A-Z0-9/\-]+)'
+    'IPC_SECTION':      r'(?:Section|Sec\.?|S\.?)\s*(\d+[A-Za-z]*(?:\(\d+\))?)\s+(?:of\s+)?(?:the\s+)?IPC',
+    'BNS_SECTION':      r'(?:Section|Sec\.?|S\.?)\s*(\d+[A-Za-z]*(?:\(\d+\))?)\s+(?:of\s+)?(?:the\s+)?BNS',
+    'CRPC_SECTION':     r'(?:Section|Sec\.?|S\.?)\s*(\d+[A-Za-z]*(?:\(\d+\))?)\s+(?:of\s+)?(?:the\s+)?Cr?PC',
+    'CPC_SECTION':      r'(?:Section|Sec\.?|S\.?)\s*(\d+[A-Za-z]*(?:\(\d+\))?)\s+(?:of\s+)?(?:the\s+)?CPC',
+    'CONSTITUTION':     r'Article\s+\d+(?:\([A-Za-z0-9]+\))?\s+of\s+the\s+Constitution(?:\s+of\s+India)?|Art\.\s*\d+',
+    'EVIDENCE_ACT':     r'(?:Section|Sec\.?)\s*(\d+[A-Za-z]*)\s+(?:of\s+)?(?:the\s+)?(?:Indian\s+)?Evidence Act',
+    'SCC_CITATION':     r'\(\d{4}\)\s+\d+\s+SCC\s+\d+',
+    'AIR_CITATION':     r'AIR\s+\d{4}\s+SC\s+\d+',
+    'FIR_NUMBER':       r'FIR\s+No\.?\s*([A-Z0-9/\-]+)',
+    'CASE_NUMBER':      r'(?:Criminal\s+Appeal|Civil\s+Appeal|Writ\s+Petition|SLP)[.\s]+No\.?\s*[\d/]+(?:\s+of\s+\d{4})?',
 }
 
-def load_legal_model():
-    try:
-        nlp = spacy.load("en_core_web_md")
-    except OSError:
-        print("Downloading en_core_web_md model...")
+STOP_WORDS = {
+    'the','a','an','and','or','but','in','on','at','to','for','of','with','by',
+    'from','is','are','was','were','be','been','being','have','has','had','do',
+    'does','did','will','would','could','should','may','might','shall','that',
+    'this','these','those','it','its','not','no','nor','as','if','so','yet',
+    'both','either','neither','each','than','then','when','where','which','who',
+    'whom','what','how','why','he','she','they','we','you','i','me','him','her',
+    'them','us','my','your','his','their','our','said','also','any','all','such',
+    'into','upon','under','above','before','after','during','through','between',
+    'among','within','without','against','over','per','there','here','out','up',
+    'down','off','thus','however','therefore','whereas','wherein','thereof',
+    'therein','hereby','herein','hereof','thereto','therewith','therefrom',
+    'thereby','shall','hereinafter','aforementioned','aforesaid','notwithstanding',
+}
+
+def _load_nlp():
+    for model in ('en_core_web_md', 'en_core_web_sm'):
         try:
-            subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_md"], check=True)
-            nlp = spacy.load("en_core_web_md")
-        except Exception as e:
-            print(f"Model download failed: {e}, using small model")
-            nlp = spacy.load("en_core_web_sm")
-    return nlp
+            return spacy.load(model)
+        except OSError:
+            continue
+    subprocess.run([sys.executable, '-m', 'spacy', 'download', 'en_core_web_sm'], check=True)
+    return spacy.load('en_core_web_sm')
 
-nlp = load_legal_model()
+nlp = _load_nlp()
 
-def summarize_document(text: str) -> str:
-    clean_text = _preprocess_text(text)
-    return _format_summary(
-        overview=_generate_overview_summary(clean_text),
-        references=_extract_legal_references(clean_text),
-        entities=_extract_entities(clean_text),
-        outcome=_extract_final_outcome(clean_text),
-        evidence=_analyze_evidence(clean_text)
-    )
+def _clean_text_line(text: str) -> str:
+    t = re.sub(r'\s+', ' ', text).strip()
+    return t
 
-def _preprocess_text(text: str) -> str:
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text[:150000]
+def _tokenize(text: str) -> List[str]:
+    tokens = re.findall(r'\b[a-zA-Z][a-zA-Z0-9\-]{2,}\b', text.lower())
+    return [t for t in tokens if t not in STOP_WORDS]
 
-def _extract_entities(text: str) -> Dict:
-    doc = nlp(text)
-    return {
-        'parties': list(set([ent.text for ent in doc.ents if ent.label_ in ('PERSON', 'ORG')]))[:5],
-        'courts': list(set([ent.text for ent in doc.ents if 'court' in ent.text.lower()]))[:3],
-        'locations': list(set([ent.text for ent in doc.ents if ent.label_ == 'GPE']))[:3],
-        'dates': list(set([ent.text for ent in doc.ents if ent.label_ == 'DATE']))[:3]
+def _compute_tfidf(sentences: List[str]) -> Tuple[np.ndarray, List[str]]:
+    vocab: Dict[str, int] = {}
+    doc_freq: Dict[str, int] = defaultdict(int)
+    tokenized: List[List[str]] = []
+
+    for sent in sentences:
+        toks = _tokenize(sent)
+        tokenized.append(toks)
+        for tok in set(toks):
+            if tok not in vocab:
+                vocab[tok] = len(vocab)
+            doc_freq[tok] += 1
+
+    if not vocab:
+        return np.zeros((len(sentences), 1)), []
+
+    vocab_list = list(vocab)
+    n = len(sentences)
+    mat = np.zeros((n, len(vocab_list)))
+
+    for i, toks in enumerate(tokenized):
+        tf: Dict[str, int] = defaultdict(int)
+        for tok in toks:
+            tf[tok] += 1
+        total = len(toks) or 1
+        for tok, cnt in tf.items():
+            if tok in vocab:
+                idf = math.log((n + 1) / (doc_freq[tok] + 1)) + 1
+                mat[i, vocab[tok]] = (cnt / total) * idf
+
+    norms = np.linalg.norm(mat, axis=1, keepdims=True)
+    norms[norms == 0] = 1
+    return mat / norms, vocab_list
+
+def get_top_terms(text: str, top_n: int = 15) -> List[Tuple[str, float]]:
+    toks = _tokenize(text)
+    if not toks:
+        return []
+    tf: Dict[str, int] = defaultdict(int)
+    for t in toks:
+        tf[t] += 1
+    total = len(toks)
+    scored = sorted(tf.items(), key=lambda x: x[1] / total, reverse=True)
+    return scored[:top_n]
+
+def textrank_sentences(sentences: List[str], top_n: int = 8) -> List[Tuple[int, str, float]]:
+    if len(sentences) <= top_n:
+        return [(i, s, 1.0) for i, s in enumerate(sentences)]
+
+    mat, _ = _compute_tfidf(sentences)
+    n = len(sentences)
+
+    sim = mat @ mat.T
+    np.fill_diagonal(sim, 0)
+
+    row_sums = sim.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1
+    sim /= row_sums
+
+    d = 0.85
+    scores = np.ones(n) / n
+    for _ in range(35):
+        scores = (1 - d) / n + d * (sim.T @ scores)
+
+    top_idx = set(i for i, _ in sorted(enumerate(scores), key=lambda x: x[1], reverse=True)[:top_n])
+    return [(i, sentences[i], float(scores[i])) for i in range(n) if i in top_idx]
+
+def lsa_topics(sentences: List[str], n_topics: int = 4) -> List[Dict[str, Any]]:
+    if len(sentences) < 3:
+        return []
+
+    mat, vocab = _compute_tfidf(sentences)
+    if mat.shape[1] < n_topics:
+        return []
+
+    try:
+        U, S, Vt = np.linalg.svd(mat, full_matrices=False)
+    except np.linalg.LinAlgError:
+        return []
+
+    topics = []
+    for k in range(min(n_topics, len(S))):
+        if S[k] < 0.01:
+            continue
+        top_term_idx = np.argsort(np.abs(Vt[k]))[::-1][:5]
+        top_terms = [vocab[i] for i in top_term_idx if i < len(vocab)]
+        sent_scores = np.abs(U[:, k]) * S[k]
+        rep_idx = int(np.argmax(sent_scores))
+        rep_sent = sentences[rep_idx] if rep_idx < len(sentences) else ''
+        topics.append({
+            'terms': top_terms,
+            'representative': rep_sent,
+            'weight': float(S[k]),
+        })
+    return topics
+
+def extract_entities(text: str) -> Dict[str, List[str]]:
+    doc = nlp(text[:80000])
+    entities: Dict[str, List[str]] = {
+        'parties': [], 'courts': [], 'judges': [],
+        'dates': [], 'locations': [],
     }
+    seen: Dict[str, set] = defaultdict(set)
 
-def _extract_legal_references(text: str) -> Dict:
-    return {
-        k: list(set(re.findall(v, text, re.IGNORECASE)))[:5]
-        for k, v in INDIAN_LEGAL_PATTERNS.items()
-        if k in ['IPC_SECTION', 'CRPC_SECTION', 'CONSTITUTION']
-    }
+    for ent in doc.ents:
+        txt = ent.text.strip()
+        if not txt or len(txt) < 3:
+            continue
+        key = txt.lower()
 
-def _analyze_evidence(text: str) -> Dict:
-    return {
-        'exhibits': list(set(re.findall(INDIAN_LEGAL_PATTERNS['EXHIBIT_REF'], text, re.IGNORECASE)))[:5],
-        'fir_numbers': list(set(re.findall(INDIAN_LEGAL_PATTERNS['FIR_NUMBER'], text, re.IGNORECASE)))[:3],
-        'evidence_sections': list(set(re.findall(
-            INDIAN_LEGAL_PATTERNS['EVIDENCE_ACT_SECTION'], text, re.IGNORECASE
-        )))[:3]
-    }
+        if ent.label_ == 'PERSON':
+            if key not in seen['PERSON']:
+                seen['PERSON'].add(key)
+                ctx = doc[max(0, ent.start - 3):ent.end + 3].text.lower()
+                if any(w in ctx for w in ['justice', ' j.', 'judge', "hon'ble", 'honourable']):
+                    entities['judges'].append(txt)
+                else:
+                    entities['parties'].append(txt)
+        elif ent.label_ == 'ORG':
+            if key not in seen['ORG']:
+                seen['ORG'].add(key)
+                if any(w in txt.lower() for w in ['court', 'tribunal', 'bench', 'commission', 'police']):
+                    entities['courts'].append(txt)
+        elif ent.label_ == 'DATE':
+            if key not in seen['DATE']:
+                seen['DATE'].add(key)
+                entities['dates'].append(txt)
+        elif ent.label_ == 'GPE':
+            if key not in seen['GPE']:
+                seen['GPE'].add(key)
+                entities['locations'].append(txt)
 
-def _extract_final_outcome(text: str) -> str:
-    doc = nlp(text)
-    outcomes = [
-        sent.text.strip() for sent in doc.sents
-        if any(keyword in sent.text.lower() 
-               for keyword in {'allowed', 'dismissed', 'convicted', 'acquitted', 'granted', 'rejected'})
-    ]
-    return ". ".join(outcomes[-2:]) if outcomes else "Case outcome not explicitly stated"
+    for k in entities:
+        entities[k] = entities[k][:6]
+    return entities
 
-def _generate_overview_summary(text: str) -> str:
-    doc = nlp(text)
-    parties = list(set([ent.text for ent in doc.ents if ent.label_ in ('PERSON', 'ORG')]))[:5]
-    issues = []
-    events = []
+def extract_legal_references(text: str) -> Dict[str, List[str]]:
+    refs: Dict[str, List[str]] = {}
+    for name, pattern in INDIAN_LEGAL_PATTERNS.items():
+        raw = re.findall(pattern, text, re.IGNORECASE)
+        cleaned = []
+        for m in raw:
+            val = ' '.join(m) if isinstance(m, tuple) else str(m)
+            val = val.strip()
+            if val and val not in cleaned:
+                cleaned.append(val)
+        if cleaned:
+            refs[name] = cleaned[:5]
+    return refs
 
+OUTCOME_KEYWORDS = {
+    'allowed', 'dismissed', 'convicted', 'acquitted', 'granted',
+    'rejected', 'upheld', 'overruled', 'affirmed', 'reversed',
+    'remanded', 'quashed', 'set aside', 'confirmed', 'modified',
+    'sentenced', 'penalty', 'compensation', 'directed', 'ordered'
+}
+
+def extract_outcome(text: str) -> str:
+    tail = text[-12000:]
+    doc = nlp(tail)
+    candidates = []
     for sent in doc.sents:
         s = sent.text.strip()
-        if any(w in s.lower() for w in ['petition', 'filed', 'appeal', 'challenged', 'dispute', 'alleged', 'accused']):
-            issues.append(s)
-        elif any(w in s.lower() for w in ['incident', 'occurred', 'arrested', 'investigation', 'facts']):
-            events.append(s)
-        if len(issues) >= 2 and len(events) >= 2:
-            break
+        score = sum(1 for kw in OUTCOME_KEYWORDS if kw in s.lower())
+        if score >= 1 and 30 < len(s) < 400:
+            candidates.append((score, s))
+    if not candidates:
+        return 'The exact final order or outcome was not explicitly specified in the text.'
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return ' '.join(s for _, s in candidates[:2])
 
-    summary_parts = []
+_REF_LABELS = {
+    'IPC_SECTION':  'Indian Penal Code (IPC)',
+    'BNS_SECTION':  'Bharatiya Nyaya Sanhita (BNS)',
+    'CRPC_SECTION': 'Code of Criminal Procedure (CrPC)',
+    'CPC_SECTION':  'Code of Civil Procedure (CPC)',
+    'CONSTITUTION': 'Constitution of India',
+    'EVIDENCE_ACT': 'Indian Evidence Act',
+    'SCC_CITATION': 'SCC Citations',
+    'AIR_CITATION': 'AIR Citations',
+    'FIR_NUMBER':   'FIR Records',
+    'CASE_NUMBER':  'Case Identification',
+}
 
-    if parties:
-        summary_parts.append(f"The case involves the following parties: {', '.join(parties)}.")
+def _build_readable_summary(sentences, topics, entities, legal_refs, key_terms, outcome) -> str:
+    lines = []
 
-    if issues:
-        summary_parts.append("The case was filed in relation to the following issues: " + " ".join(issues[:2]))
+    lines.append("### 📌 Executive Summary")
+    # Top 3 most coherent TextRank sentences
+    exec_paras = [s for _, s, _ in sentences[:3]]
+    lines.append("\n\n".join(exec_paras))
 
-    if events:
-        summary_parts.append("The key facts and events in the case include: " + " ".join(events[:2]))
+    lines.append("\n---\n")
+    lines.append("### ⚖️ Final Outcome & Judicial Decision")
+    lines.append(f"> {outcome}")
 
-    if not (parties or issues or events):
-        # fallback
-        summary_parts.append("This case concerns a legal dispute. Detailed context could not be extracted.")
+    lines.append("\n---\n")
+    lines.append("### 👥 Case Identity & Key Parties (NER)")
+    p_info = []
+    if entities.get('parties'):
+        p_info.append(f"- **Key Parties / Individuals:** {', '.join(entities['parties'])}")
+    if entities.get('judges'):
+        p_info.append(f"- **Bench / Presiding Judges:** {', '.join(entities['judges'])}")
+    if entities.get('courts'):
+        p_info.append(f"- **Courts / Authorities:** {', '.join(entities['courts'])}")
+    if entities.get('locations'):
+        p_info.append(f"- **Jurisdiction:** {', '.join(entities['locations'])}")
+    if entities.get('dates'):
+        p_info.append(f"- **Important Dates Mentioned:** {', '.join(entities['dates'][:4])}")
+    lines.append("\n".join(p_info) if p_info else "No distinct parties could be automatically indexed.")
 
-    return " ".join(summary_parts)
+    if legal_refs:
+        lines.append("\n---\n")
+        lines.append("### 📜 Statutory Provisions & Legal Citations")
+        ref_bullets = []
+        for key, vals in legal_refs.items():
+            label = _REF_LABELS.get(key, key)
+            ref_bullets.append(f"- **{label}:** {', '.join(vals)}")
+        lines.append("\n".join(ref_bullets))
 
-def _format_summary(overview: str, references: Dict, 
-                   entities: Dict, outcome: str, evidence: Dict) -> str:
-    sections = []
+    # Core Facts & Arguments from TextRank sentences 4 onwards
+    core_facts = [s for _, s, _ in sentences[3:8] if len(s) > 40]
+    if core_facts:
+        lines.append("\n---\n")
+        lines.append("### 🔍 Key Facts & Findings (TextRank)")
+        for f in core_facts:
+            lines.append(f"- {f}")
+
+    if topics:
+        lines.append("\n---\n")
+        lines.append("### 💡 Core Legal Concepts Identified (LSA Topics)")
+        for i, t in enumerate(topics[:3], 1):
+            terms_str = ", ".join(t['terms']).title()
+            rep = t['representative']
+            if len(rep) > 180:
+                rep = rep[:180] + "..."
+            lines.append(f"- **Topic {i} ({terms_str}):** {rep}")
+
+    if key_terms:
+        lines.append("\n---\n")
+        lines.append("### 🏷️ Critical Legal Terms (TF-IDF)")
+        terms_badge = " ".join([f"`{term}`" for term in key_terms[:8]])
+        lines.append(terms_badge)
+
+    return "\n".join(lines)
+
+def summarize_document(text: str) -> str:
+    """
+    Generate clean, coherent, highly professional legal summary.
+    Powered strictly by TextRank, TF-IDF, LSA, and NER. No LLM.
+    """
+    cleaned = _clean_text_line(text)
+    doc_spacy = nlp(cleaned[:100000])
     
-    # Case Overview
-    sections.append(f"## Case Overview\n{overview}")
-    
-    # Final Outcome
-    sections.append(f"## Final Outcome\n{outcome}")
-    
-    # Evidence Analysis
-    evidence_lines = []
-    if evidence['exhibits']:
-        evidence_lines.append(f"- Exhibits: {', '.join(evidence['exhibits'])}")
-    if evidence['fir_numbers']:
-        evidence_lines.append(f"- FIR Numbers: {', '.join(evidence['fir_numbers'])}")
-    if evidence['evidence_sections']:
-        evidence_lines.append(f"- Evidence Act Sections: {', '.join(evidence['evidence_sections'])}")
-    if evidence_lines:
-        sections.append("## Evidence Analysis\n" + "\n".join(evidence_lines))
-    
-    # Legal References
-    ref_lines = []
-    for ref_type, values in references.items():
-        if values:
-            clean_name = ref_type.replace('_', ' ').title()
-            ref_lines.append(f"- {clean_name}: {', '.join(values)}")
-    if ref_lines:
-        sections.append("## Legal References\n" + "\n".join(ref_lines))
-    
-    # Key Entities
-    entity_lines = []
-    for entity_type, values in entities.items():
-        if values:
-            entity_lines.append(f"- {entity_type.title()}: {', '.join(values)}")
-    if entity_lines:
-        sections.append("## Key Entities\n" + "\n".join(entity_lines))
-    
-    return "\n\n".join(sections)
+    # Filter high quality legal sentences
+    sentences = []
+    for s in doc_spacy.sents:
+        sent_text = s.text.strip()
+        if 40 < len(sent_text) < 450:
+            sentences.append(sent_text)
+
+    if not sentences:
+        return "Unable to parse clear sentences from this document."
+
+    n_top = max(5, min(10, len(sentences) // 6))
+    top_sents = sorted(textrank_sentences(sentences, top_n=n_top), key=lambda x: x[0])
+
+    topics = lsa_topics(sentences[:250], n_topics=3)
+    entities = extract_entities(cleaned)
+    legal_refs = extract_legal_references(cleaned)
+    key_terms = [t for t, _ in get_top_terms(cleaned, 15) if len(t) > 3]
+    outcome = extract_outcome(cleaned)
+
+    return _build_readable_summary(top_sents, topics, entities, legal_refs, key_terms, outcome)

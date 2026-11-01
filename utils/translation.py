@@ -1,345 +1,229 @@
+"""
+Legal Language Simplifier
+TF-IDF term ranking + NER + exact legal dictionary matching.
+Strictly no LLM — lightning fast and fully local.
+"""
+
 import re
+import math
+import sys
+import subprocess
 import spacy
-from typing import Dict, List, Optional
+from typing import Dict, List, Tuple
+from collections import defaultdict
 
-# Load spaCy model
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    # If the model is not available, download a small one
-    import subprocess
-    subprocess.call(['python', '-m', 'spacy', 'download', 'en_core_web_sm'])
-    nlp = spacy.load("en_core_web_sm")
+def _load_nlp():
+    for model in ('en_core_web_md', 'en_core_web_sm'):
+        try:
+            return spacy.load(model)
+        except OSError:
+            continue
+    subprocess.run([sys.executable, '-m', 'spacy', 'download', 'en_core_web_sm'], check=True)
+    return spacy.load('en_core_web_sm')
 
-# Dictionary of common legal terms and their plain language explanations
-LEGAL_TERMS = {
-    # General legal terms
-    "force majeure": "Unforeseeable circumstances that prevent fulfilling a contract",
-    "habeas corpus": "A legal action to determine if someone's detention is lawful",
-    "res judicata": "A matter that has been adjudicated and cannot be pursued further",
-    "prima facie": "Based on first impression or accepted as correct until proven otherwise",
-    "voir dire": "Preliminary examination of a witness or juror",
-    "stare decisis": "Legal principle of determining points based on precedent",
-    "mens rea": "The intention or knowledge of wrongdoing",
-    "actus reus": "The action or conduct that is a constituent element of a crime",
-    "pro se": "Representing oneself in court without an attorney",
-    "de novo": "Starting anew, as if previous proceedings did not occur",
-    "pro bono": "Legal work done for free or for the public good",
-    "ex parte": "A legal proceeding brought by one person without the other party knowing",
-    "amicus curiae": "Friend of the court; someone who offers information or insight to the court",
-    "in camera": "In private, in a judge's chambers",
-    "inter alia": "Among other things",
-    "nunc pro tunc": "Now for then; retroactive legal change",
-    "per curiam": "By the court as a whole rather than by a specific judge",
-    "corpus delicti": "The facts that show a crime has been committed",
-    "sua sponte": "Something done by a court's own initiative, without prompting",
-    "res ipsa loquitur": "The thing speaks for itself; doctrine where negligence can be inferred",
-    "subpoena duces tecum": "Order to produce documents or other evidence",
-    "tort": "A wrongful act leading to civil legal liability",
-    "writ of mandamus": "Court order to a government official to properly fulfill duties",
-    "affidavit": "A written statement confirmed by oath for use as evidence",
-    "estoppel": "Principle that prevents someone from arguing something contrary to a previous claim",
-    "hearsay": "Evidence based on what someone has told the witness, not what they personally know",
-    "jurisdiction": "Authority of a court to make legal decisions and judgments",
-    "precedent": "A previous case that establishes a legal principle for similar future cases",
-    "plaintiff": "Person who initiates a lawsuit",
-    "defendant": "Person against whom legal action is brought",
-    "appellant": "Person who appeals a lower court's decision",
-    "respondent": "Person against whom an appeal is filed",
-    "adjudicate": "To make an official decision or judgment about a legal matter",
-    "injunction": "Court order requiring someone to do or stop doing something",
-    "lien": "Legal right to keep possession of property until a debt is paid",
-    "deposition": "Out-of-court testimony by a witness",
-    "interrogatory": "Written questions sent to the opposing party in a lawsuit",
-    "motion": "Formal request asking a judge to make a decision on a specific issue",
-    "statute of limitations": "Time limit for filing a lawsuit",
-    "burden of proof": "Obligation to prove one's case",
-    "class action": "Lawsuit filed by a group of people with similar claims",
-    "discovery": "Process where parties exchange information before trial",
-    "bail": "Money paid for release from jail pending trial",
-    "indictment": "Formal accusation that someone has committed a crime",
-    "acquittal": "Judgment that a person is not guilty of a charge",
-    "preponderance of evidence": "Standard of proof requiring that a claim is more likely true than not",
-    "beyond reasonable doubt": "Standard of proof requiring that there is no reasonable doubt of guilt",
-    
-    # Indian legal terms
-    "writ petition": "A court petition for extraordinary review, seeking justice when fundamental rights are violated",
-    "suo motu": "Action taken by a court on its own initiative without any party requesting it",
-    "cognizance": "Formal recognition by a court that it has the power to deal with a particular case or matter",
-    "vakalatnama": "Document by which a litigant authorizes an advocate to represent them in court",
-    "lok adalat": "People's court where disputes are settled through compromise and conciliation",
-    "caveat": "A notice given by someone that they have an interest in the matter and should be informed before action is taken",
-    "anticipatory bail": "Bail granted to a person who anticipates arrest for a non-bailable offense",
-    "FIR": "First Information Report, the document prepared by police when they receive information about a cognizable offense",
-    "panchnama": "A memorandum of observation prepared in the presence of five witnesses",
-    "crpc": "Code of Criminal Procedure, the main legislation on procedure for administration of criminal law in India",
-    "cpc": "Code of Civil Procedure, the procedural law related to civil proceedings in India",
-    "ipc": "Indian Penal Code, the main criminal code of India",
-    "pil": "Public Interest Litigation, court case filed to protect the public interest, such as pollution or rights violations",
-    "adr": "Alternative Dispute Resolution, resolving disputes outside the formal court system",
-    "ncdrc": "National Consumer Disputes Redressal Commission, the highest consumer court in India",
-    "dpsp": "Directive Principles of State Policy, guidelines in the Indian Constitution for governance",
-    "section 377": "Previously criminalized homosexual acts in India (partially struck down in 2018)",
-    "fundamental rights": "Basic rights guaranteed to all citizens by the Indian Constitution",
-    "preventive detention": "Detention of a person to prevent possible future crimes",
-    "article 21": "Right to life and personal liberty under the Indian Constitution",
-    "legal aid": "Free legal assistance provided to eligible individuals who cannot afford legal representation"
+nlp = _load_nlp()
+
+LEGAL_TERMS: Dict[str, Tuple[str, str]] = {
+    "force majeure":        ("Force Majeure",        "An unforeseeable event (flood, war, pandemic) that excuses a party from contractual obligations."),
+    "habeas corpus":        ("Habeas Corpus",         "A writ requiring that a detained person be brought before a judge to determine if the detention is lawful."),
+    "res judicata":         ("Res Judicata",          "Once a court has finally decided a case, the same parties cannot re-litigate the same dispute."),
+    "prima facie":          ("Prima Facie",           "On the face of it — evidence sufficient to establish a fact unless rebutted."),
+    "voir dire":            ("Voir Dire",             "Preliminary examination of a witness or juror to determine competency or admissibility."),
+    "stare decisis":        ("Stare Decisis",         "Courts must follow earlier judicial decisions (precedents) when deciding similar cases."),
+    "mens rea":             ("Mens Rea",              "Guilty mind — the criminal intent or knowledge required for most offences."),
+    "actus reus":           ("Actus Reus",            "The guilty act — the physical conduct that constitutes the criminal offence."),
+    "pro se":               ("Pro Se",                "Representing oneself in court without a lawyer."),
+    "de novo":              ("De Novo",               "A fresh hearing as if no prior proceedings occurred; used in appellate review."),
+    "pro bono":             ("Pro Bono",              "Legal work performed free of charge, usually in the public interest."),
+    "ex parte":             ("Ex Parte",              "A court proceeding or order made without notice to or in the absence of the other party."),
+    "amicus curiae":        ("Amicus Curiae",         "Friend of the court — a non-party that submits information to assist the court."),
+    "in camera":            ("In Camera",             "Proceedings held in private (judge's chambers), not open to the public."),
+    "inter alia":           ("Inter Alia",            "Among other things — indicates the list is not exhaustive."),
+    "nunc pro tunc":        ("Nunc Pro Tunc",         "Now for then — a retroactive court order correcting a prior record."),
+    "per curiam":           ("Per Curiam",            "A judgment by the court as a whole, not attributed to any single judge."),
+    "corpus delicti":       ("Corpus Delicti",        "The body of the crime — the facts that prove a crime has been committed."),
+    "sua sponte":           ("Sua Sponte",            "On the court's own initiative, without any party requesting action."),
+    "res ipsa loquitur":    ("Res Ipsa Loquitur",     "The thing speaks for itself — negligence may be inferred from the nature of the event."),
+    "subpoena duces tecum": ("Subpoena Duces Tecum",  "Court order compelling production of documents or other evidence."),
+    "writ of mandamus":     ("Writ of Mandamus",      "Court order requiring a public official or body to perform a statutory duty."),
+    "estoppel":             ("Estoppel",              "A party is barred from asserting something contrary to what was previously claimed or agreed upon."),
+    "locus standi":         ("Locus Standi",          "The legal right of a person to bring an action before a court."),
+    "ratio decidendi":      ("Ratio Decidendi",       "The binding legal reason or principle on which the court's decision is based."),
+    "obiter dicta":         ("Obiter Dicta",          "Remarks made by a judge in passing — persuasive but not binding precedent."),
+    "sub judice":           ("Sub Judice",            "The matter is currently under judicial consideration and may not be publicly discussed."),
+    "ex officio":           ("Ex Officio",            "By virtue of holding a particular office or position."),
+    "writ petition":        ("Writ Petition",         "Petition to High Court or Supreme Court for extraordinary relief when fundamental rights are violated."),
+    "suo motu":             ("Suo Motu",              "Action taken by a court on its own initiative without a complaint from any party."),
+    "cognizance":           ("Cognizance",            "Formal recognition by a court or magistrate of its authority to deal with a matter."),
+    "vakalatnama":          ("Vakalatnama",           "Document by which a litigant authorises an advocate to appear on their behalf."),
+    "lok adalat":           ("Lok Adalat",            "People's Court under the Legal Services Authorities Act — disputes settled through compromise."),
+    "caveat":               ("Caveat",                "A notice ensuring the filer is heard before any court order is passed against them."),
+    "anticipatory bail":    ("Anticipatory Bail",     "Bail granted in advance to protect a person from arrest for a non-bailable offence."),
+    "fir":                  ("FIR (First Information Report)", "Document prepared by police on receiving information about a cognizable offence; initiates investigation."),
+    "panchnama":            ("Panchnama",             "Memorandum of observation prepared in the presence of independent witnesses during a police search or seizure."),
+    "crpc":                 ("CrPC",                  "Code of Criminal Procedure — governs the procedural aspects of criminal justice in India."),
+    "cpc":                  ("CPC",                   "Code of Civil Procedure — governs procedure for civil litigation in Indian courts."),
+    "ipc":                  ("IPC (Indian Penal Code)", "India's main criminal code defining offences and prescribing punishments (applicable pre-July 2024)."),
+    "bns":                  ("BNS (Bharatiya Nyaya Sanhita)", "New criminal code that replaced the IPC from 1 July 2024."),
+    "pil":                  ("PIL (Public Interest Litigation)", "Litigation filed by any citizen to protect a public interest; relaxed locus standi rules."),
+    "adr":                  ("ADR (Alternative Dispute Resolution)", "Resolving disputes outside courts: arbitration, mediation, conciliation, Lok Adalat."),
+    "preventive detention": ("Preventive Detention",  "Detention without trial to prevent a person from committing a future harmful act."),
+    "fundamental rights":   ("Fundamental Rights",    "Basic constitutional rights guaranteed by Part III of the Constitution to all citizens."),
+    "directive principles": ("Directive Principles",  "Non-justiciable guidelines in Part IV of the Constitution directing state governance."),
+    "legal aid":            ("Legal Aid",             "Free legal assistance under the Legal Services Authorities Act to eligible persons."),
+    "special leave petition": ("SLP (Special Leave Petition)", "Discretionary petition to the Supreme Court under Article 136 to appeal any court's order."),
+    "slp":                  ("SLP (Special Leave Petition)", "Discretionary petition to the Supreme Court under Article 136 to appeal any court's order."),
+    "review petition":      ("Review Petition",       "Application asking the same court to reconsider its own judgment."),
+    "curative petition":    ("Curative Petition",     "Last judicial remedy — lies before the Supreme Court after a review petition is dismissed."),
+    "bail":                 ("Bail",                  "Temporary release of an accused from custody on surety or bond, pending trial."),
+    "cognizable offence":   ("Cognizable Offence",    "An offence for which police may arrest without a warrant and investigate without a magistrate's order."),
+    "non-cognizable offence": ("Non-Cognizable Offence", "An offence requiring a magistrate's authority before police can arrest or investigate."),
+    "bailable offence":     ("Bailable Offence",      "An offence where the accused has a right to bail."),
+    "non-bailable offence": ("Non-Bailable Offence",  "An offence where bail is at the court's discretion, not a right."),
+    "remand":               ("Remand",                "Court order sending the accused back to custody (police or judicial) pending investigation or trial."),
+    "acquittal":            ("Acquittal",             "Formal finding that the accused is not guilty; results in release."),
+    "conviction":           ("Conviction",            "Formal finding that the accused is guilty of the charge."),
+    "injunction":           ("Injunction",            "Court order restraining a party from doing (prohibitory) or compelling them to do (mandatory) a specific act."),
+    "affidavit":            ("Affidavit",             "A written statement of facts sworn or affirmed before an authorised officer."),
+    "decree":               ("Decree",                "Final expression of a civil court's adjudication of the parties' rights."),
+    "interlocutory":        ("Interlocutory Order",   "An order made during proceedings that does not finally dispose of the case."),
+    "stay":                 ("Stay Order",            "Order temporarily suspending proceedings or enforcement of a decree, pending appeal."),
+    "jurisdiction":         ("Jurisdiction",          "A court's authority to hear and decide a case — limited by territory, subject matter, and pecuniary value."),
+    "charge sheet":         ("Charge Sheet",          "Document filed by police in court after investigation, naming the accused and the charges."),
+    "contempt of court":    ("Contempt of Court",     "Disobedience or disrespect to a court, or conduct that interferes with the administration of justice."),
+    "limitation":           ("Limitation Period",     "Time limit within which a suit or appeal must be filed, prescribed by the Limitation Act, 1963."),
+    "cause of action":      ("Cause of Action",       "The set of facts giving a person a legal right to seek judicial redress."),
+    "transfer petition":    ("Transfer Petition",     "Petition seeking transfer of a case from one court/state to another."),
 }
+
+LEGAL_PHRASES: List[Tuple[str, str]] = [
+    (r'pursuant to (?:Section|Article|Order|Rule)[\w\s\.]+',
+     '**Pursuant to [provision]** — In accordance with / as required by that provision'),
+    (r'notwithstanding (?:anything|the provisions|Section|any)[\w\s\.]+',
+     '**Notwithstanding** — Despite / regardless of the stated provision'),
+    (r'without prejudice to',
+     '**Without Prejudice** — Without affecting any existing legal rights or claims'),
+    (r'subject to (?:the provisions|Section)[\w\s\.]+',
+     '**Subject to [provision]** — Conditioned upon / limited by that provision'),
+    (r'save (?:and except|as (?:otherwise|provided))',
+     '**Save and Except** — Except for / other than the stated cases'),
+    (r'in so far as',
+     '**In So Far As** — To the extent that'),
+    (r'hereinafter (?:referred to as|called)',
+     '**Hereinafter referred to as** — From this point in the document, will be called'),
+    (r'aforementioned|aforesaid',
+     '**Aforementioned / Aforesaid** — Previously mentioned / referred to above in this document'),
+    (r'without derogating from',
+     '**Without Derogating From** — Without diminishing or limiting'),
+    (r'mutatis mutandis',
+     '**Mutatis Mutandis** — With the necessary changes having been made; with like changes'),
+]
+
+def _tfidf_rank(text: str, terms: List[str]) -> List[Tuple[str, float]]:
+    text_lower = text.lower()
+    total = len(text_lower.split()) or 1
+    scored = []
+    for term in terms:
+        cnt = len(re.findall(r'\b' + re.escape(term) + r'\b', text_lower))
+        if cnt == 0:
+            continue
+        tf = cnt / total
+        idf = 1 + math.log(1 / (cnt + 1))
+        scored.append((term, tf * idf * cnt))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored
+
+def _find_terms(text: str) -> Dict[str, Tuple[str, str]]:
+    text_lower = text.lower()
+    found = {}
+    for key, (display, expl) in LEGAL_TERMS.items():
+        pattern = r'\b' + re.escape(key) + r'\b'
+        if re.search(pattern, text_lower):
+            found[key] = (display, expl)
+    return found
 
 def translate_legal_jargon(text: str) -> str:
     """
-    Translate legal jargon in text to plain language.
-    
-    Args:
-        text (str): Legal text to translate
-    
-    Returns:
-        str: Text with legal terms translated
+    Identify and explain legal terms in a passage using exact matching + TF-IDF ranking.
+    No LLM.
     """
-    # Process with spaCy for sentence segmentation
-    doc = nlp(text)
-    sentences = [sent.text for sent in doc.sents]
-    
-    # Process each sentence
-    translated_sentences = []
-    for sentence in sentences:
-        translated_sentence = translate_sentence(sentence)
-        translated_sentences.append(translated_sentence)
-    
-    # Join and format the translated text
-    translated_text = "\n\n".join(translated_sentences)
-    
-    # Add explanations of terms at the end
-    term_explanations = get_term_explanations(text)
-    if term_explanations:
-        translated_text += "\n\n## Legal Terms Explained\n\n"
-        for term, explanation in term_explanations.items():
-            translated_text += f"- **{term}**: {explanation}\n"
-    
-    return translated_text
+    if not text.strip():
+        return '_No text provided._'
 
-def translate_sentence(sentence: str) -> str:
-    """
-    Translate legal terms in a single sentence.
-    
-    Args:
-        sentence (str): Sentence to translate
-    
-    Returns:
-        str: Translated sentence
-    """
-    # Lowercase for case-insensitive matching
-    sentence_lower = sentence.lower()
-    
-    # Find legal terms in the sentence
-    terms_found = []
-    for term in LEGAL_TERMS:
-        # Look for exact matches of multi-word terms
-        if term in sentence_lower:
-            terms_found.append(term)
-        # For single word terms, check word boundaries
-        elif len(term.split()) == 1:
-            pattern = r'\b' + re.escape(term) + r'\b'
-            if re.search(pattern, sentence_lower):
-                terms_found.append(term)
-    
-    # Translated sentence starts as the original
-    translated = sentence
-    
-    # If terms found, highlight and explain them
-    if terms_found:
-        for term in sorted(terms_found, key=len, reverse=True):  # Process longest terms first
-            # Find the term with proper case in the original sentence
-            case_insensitive_pattern = re.compile(re.escape(term), re.IGNORECASE)
-            match = case_insensitive_pattern.search(translated)
-            if match:
-                original_case_term = match.group(0)
-                # Replace with highlighted term
-                translated = case_insensitive_pattern.sub(f"**{original_case_term}**", translated, 1)
-    
-    return translated
+    found = _find_terms(text)
+    if not found:
+        return text + '\n\n---\n\n_No recognised legal terms found in this passage._'
 
-def get_term_explanations(text: str) -> Dict[str, str]:
-    """
-    Get explanations for legal terms found in the text.
-    
-    Args:
-        text (str): Text to find terms in
-    
-    Returns:
-        Dict[str, str]: Dictionary of terms and their explanations
-    """
-    text_lower = text.lower()
-    explanations = {}
-    
-    for term, explanation in LEGAL_TERMS.items():
-        # Check for exact multi-word terms
-        if term in text_lower:
-            explanations[term] = explanation
-        # For single word terms, check word boundaries
-        elif len(term.split()) == 1:
-            pattern = r'\b' + re.escape(term) + r'\b'
-            if re.search(pattern, text_lower):
-                explanations[term] = explanation
-    
-    return explanations
+    ranked = _tfidf_rank(text, list(found.keys()))
 
-def identify_legal_phrases(text: str) -> List[Dict[str, str]]:
-    """
-    Identify complex legal phrases in text that might need explanation.
-    
-    Args:
-        text (str): Legal text to analyze
-    
-    Returns:
-        List[Dict[str, str]]: List of legal phrases with context
-    """
-    # This would use more sophisticated NLP in a real application
-    # Here we'll use simple pattern matching
-    
-    legal_phrases = []
-    
-    # Look for patterns like "pursuant to Section X" or "in accordance with"
-    general_patterns = [
-        r'pursuant to [\w\s\d\.]+',
-        r'in accordance with [\w\s\d\.]+',
-        r'notwithstanding [\w\s\d\.]+',
-        r'hereinafter [\w\s\d\.]+',
-        r'aforementioned [\w\s\d\.]+',
-        r'subject to the provisions of [\w\s\d\.]+',
-        r'without prejudice to [\w\s\d\.]+'
-    ]
-    
-    # Indian legal system specific patterns
-    indian_patterns = [
-        r'Section \d+(?:[A-Z])? of the Indian Penal Code',
-        r'Section \d+(?:[A-Z])? of the Code of Criminal Procedure',
-        r'Section \d+(?:[A-Z])? of the Code of Civil Procedure',
-        r'Article \d+(?:[A-Z])? of the Constitution of India',
-        r'as per the provisions of [\w\s\d\.]+',
-        r'under Order \d+ Rule \d+ of [\w\s\d\.]+',
-        r'Special Leave Petition \(SLP\)',
-        r'writ of [\w\s]+',
-        r'Fundamental Right[s]? under [\w\s\d\.]+',
-        r'directions issued under [\w\s\d\.]+',
-        r'contempt of court',
-        r'review petition',
-        r'curative petition',
-        r'transfer petition',
-        r'vakalatnama executed by [\w\s\d\.]+',
-        r'First Information Report \(FIR\)',
-        r'chargeshee?t filed by [\w\s\d\.]+',
-        r'Public Interest Litigation \(PIL\)'
-    ]
-    
-    # Combine both pattern sets
-    all_patterns = general_patterns + indian_patterns
-    
-    for pattern in all_patterns:
-        matches = re.finditer(pattern, text, re.IGNORECASE)
-        for match in matches:
-            phrase = match.group(0)
-            
-            # Get context around the phrase
-            start_idx = max(0, match.start() - 50)
-            end_idx = min(len(text), match.end() + 50)
-            context = text[start_idx:end_idx]
-            
-            legal_phrases.append({
-                "phrase": phrase,
-                "context": context
-            })
-    
-    return legal_phrases
+    lines = [text, '\n\n---\n\n## 📖 Legal Terms Identified & Explained\n']
+    for term_key, _ in ranked[:25]:
+        display, expl = found[term_key]
+        lines.append(f'**{display}**\n{expl}\n')
+
+    phrase_hits = []
+    for phrase_pattern, phrase_expl in LEGAL_PHRASES:
+        if re.search(phrase_pattern, text, re.IGNORECASE):
+            phrase_hits.append(f'- {phrase_expl}')
+    if phrase_hits:
+        lines.append('\n## 📌 Structural Legal Phrases Detected\n')
+        lines.extend(phrase_hits)
+
+    return '\n'.join(lines)
 
 def simplify_legal_document(text: str) -> str:
     """
-    Simplify an entire legal document by translating jargon and breaking down complex sentences.
-    
-    Args:
-        text (str): Legal document text
-    
-    Returns:
-        str: Simplified document text
+    Comprehensive document analysis:
+    - NER entity preservation
+    - TF-IDF ranked legal terms glossary
+    - Legal phrase breakdown
+    Strictly no LLM.
     """
-    # Process with spaCy
-    doc = nlp(text[:100000])  # Limit text size for processing
-    
-    # Break into paragraphs
-    paragraphs = text.split('\n\n')
-    simplified_paragraphs = []
-    
-    for paragraph in paragraphs:
-        if not paragraph.strip():
-            simplified_paragraphs.append("")
-            continue
-            
-        # Process the paragraph
-        doc = nlp(paragraph)
-        
-        # Simplify each sentence
-        simplified_sentences = []
-        for sent in doc.sents:
-            # Translate legal terms
-            simplified = translate_sentence(sent.text)
-            
-            # Break down complex sentences (in a real app, would use more sophisticated methods)
-            if len(sent) > 30:  # If sentence is long
-                simplified = break_down_complex_sentence(simplified)
-                
-            simplified_sentences.append(simplified)
-        
-        # Join sentences and add to paragraphs
-        simplified_paragraph = " ".join(simplified_sentences)
-        simplified_paragraphs.append(simplified_paragraph)
-    
-    # Join paragraphs
-    simplified_text = "\n\n".join(simplified_paragraphs)
-    
-    # Add glossary at the end
-    term_explanations = get_term_explanations(text)
-    if term_explanations:
-        simplified_text += "\n\n## Legal Terms Glossary\n\n"
-        for term, explanation in term_explanations.items():
-            simplified_text += f"- **{term}**: {explanation}\n"
-    
-    return simplified_text
+    if not text.strip():
+        return '_No text provided._'
 
-def break_down_complex_sentence(sentence: str) -> str:
-    """
-    Attempt to break down a complex legal sentence into simpler parts.
-    
-    Args:
-        sentence (str): Complex sentence to simplify
-    
-    Returns:
-        str: Simplified version, possibly broken into multiple sentences
-    """
-    # In a real app, this would use more sophisticated NLP techniques
-    # For this demo, we'll use basic heuristics
-    
-    # Process with spaCy
-    doc = nlp(sentence)
-    
-    # If sentence is short, just return it
-    if len(doc) <= 30:
-        return sentence
-    
-    # Look for common connectors to split on
-    connectors = ['; ', ', however, ', ', nevertheless, ', ', moreover, ', ', furthermore, ']
-    
-    simplified = sentence
-    for connector in connectors:
-        if connector in simplified:
-            parts = simplified.split(connector, 1)
-            if len(parts) == 2:
-                # Ensure first part ends with period if needed
-                if not parts[0].rstrip().endswith('.'):
-                    parts[0] = parts[0] + '.'
-                # Ensure second part starts with capital letter
-                if parts[1] and not parts[1].lstrip()[0].isupper():
-                    parts[1] = parts[1][0].upper() + parts[1][1:]
-                simplified = parts[0] + ' ' + parts[1]
-                break
-    
-    return simplified
+    doc_spacy = nlp(text[:80000])
+    ents: Dict[str, List[str]] = defaultdict(list)
+    seen: set = set()
+    for ent in doc_spacy.ents:
+        if ent.label_ in ('PERSON', 'ORG', 'DATE', 'GPE', 'LAW'):
+            k = ent.text.strip().lower()
+            if k not in seen and len(k) > 1:
+                seen.add(k)
+                ents[ent.label_].append(ent.text.strip())
+
+    found = _find_terms(text)
+    ranked = _tfidf_rank(text, list(found.keys()))
+
+    sections = []
+
+    glance = []
+    if ents.get('ORG'):
+        glance.append(f"**Courts / Organizations:** {', '.join(ents['ORG'][:5])}")
+    if ents.get('PERSON'):
+        glance.append(f"**Persons / Parties:** {', '.join(ents['PERSON'][:6])}")
+    if ents.get('DATE'):
+        glance.append(f"**Key Dates:** {', '.join(ents['DATE'][:6])}")
+    if ents.get('GPE'):
+        glance.append(f"**Jurisdictions:** {', '.join(ents['GPE'][:4])}")
+    if glance:
+        sections.append('## 🔍 Document At a Glance (NER Extraction)\n\n' + '\n\n'.join(glance))
+
+    if ranked:
+        term_lines = []
+        for term_key, _ in ranked[:30]:
+            display, expl = found[term_key]
+            term_lines.append(f'**{display}**\n> {expl}')
+        sections.append('## 📖 Legal Jargon in Plain Language (TF-IDF Ranked)\n\n' + '\n\n'.join(term_lines))
+
+    phrase_hits = []
+    for phrase_pattern, phrase_expl in LEGAL_PHRASES:
+        if re.search(phrase_pattern, text, re.IGNORECASE):
+            phrase_hits.append(f'- {phrase_expl}')
+    if phrase_hits:
+        sections.append('## 📌 Structural Legal Phrases Simplified\n\n' + '\n'.join(phrase_hits))
+
+    if not sections:
+        sections.append('_No recognised legal terms or patterns found in this document._')
+
+    return '\n\n---\n\n'.join(sections)

@@ -14,6 +14,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Hide Streamlit's multi-page auto nav links (app, home, summary, etc.) in the sidebar
+st.markdown("""
+<style>
+[data-testid="stSidebarNav"] {
+    display: none !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # Initialize session state variables
 if 'current_document' not in st.session_state:
     st.session_state.current_document = None
@@ -38,6 +47,7 @@ def login_page():
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         .stApp > header {display: none !important;}
+        [data-testid="stSidebarNav"] {display: none !important;}
     </style>
     """
     st.markdown(hide_navigation_css, unsafe_allow_html=True)
@@ -138,42 +148,36 @@ def main_interface():
         render_chatbot_page()
     elif selected_tab == "Settings":
         settings_page()
-    elif selected_tab != "Home" and selected_tab != "AI Chat":
+    elif selected_tab != "Home" and selected_tab != "VERA":
         st.warning("Please upload a document first.")
 
 def home_page():
     """Home page with document upload and history."""
-    # Import and render home page
     from pages.home import render_home_page
     render_home_page()
 
 def summary_page():
     """Page showing document summary."""
-    # Import and render summary page
     from pages.summary import render_summary_page
     render_summary_page()
 
 def timeline_page():
     """Page showing document timeline and deadlines."""
-    # Import and render timeline page
     from pages.timeline import render_timeline_page
     render_timeline_page()
 
 def precedents_page():
     """Page showing precedent cases and relevant legal arguments."""
-    # Import and render precedents page
     from pages.precedents import render_precedents_page
     render_precedents_page()
 
 def translator_page():
     """Page for translating legal jargon to plain language."""
-    # Import and render translator page
     from pages.translator import render_translator_page
     render_translator_page()
 
 def settings_page():
     """Settings page for user preferences."""
-    # Import and render settings page
     from pages.settings import render_settings_page
     render_settings_page()
 
@@ -193,7 +197,7 @@ def main():
         )
         st.session_state.app_loaded = True
         import time
-        time.sleep(5)
+        time.sleep(2)
         st.rerun()
     
     if not st.session_state.user_logged_in:
